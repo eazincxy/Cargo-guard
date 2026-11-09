@@ -1,0 +1,49 @@
+name: Regression
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "auto_regress.py"
+      - "test_cases.json"
+      - ".github/workflows/regress.yml"
+  pull_request:
+    paths:
+      - "auto_regress.py"
+      - "test_cases.json"
+      - ".github/workflows/regress.yml"
+
+jobs:
+  regression:
+    name: Agent regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Validate test cases
+        run: python auto_regress.py --dry-run
+
+      - name: Run regression suite
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          OPENAI_BASE_URL: ${{ secrets.OPENAI_BASE_URL }}
+          AGENT_MODEL: ${{ secrets.AGENT_MODEL }}
+          JUDGE_MODEL: ${{ secrets.JUDGE_MODEL }}
+        run: python auto_regress.py
+
+      - name: Upload regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regression-report
+          path: reports/
+          if-no-files-found: warn

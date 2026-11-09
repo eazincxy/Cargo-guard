@@ -1,8 +1,54 @@
-__pycache__/
-*.pyc
-venv/
-.venv/
+# ---------- 密钥与凭据（不要上传） ----------
 .env
-data.db
-ai_history.json
+.env.*
+!.env.example
+secrets.toml
+.streamlit/secrets.toml
+*.pem
+*.key
+*.p12
+
+# ---------- Python 缓存 ----------
+__pycache__/
+*.py[cod]
+*$py.class
 .pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.pyre/
+.coverage
+htmlcov/
+
+# ---------- 虚拟环境 ----------
+.venv/
+venv/
+env/
+ENV/
+virtualenv/
+
+# ---------- Playwright ----------
+node_modules/
+package-lock.json
+npm-debug.log*
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+# ---------- 本地数据 ----------
+data.db
+*.sqlite
+*.sqlite3
+ai_history.json
+reports/
+
+# ---------- 日志 ----------
+*.log
+logs/
+
+# ---------- 系统 / 编辑器 ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+.idea/
+.vscode/
