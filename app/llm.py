@@ -2,7 +2,6 @@
 import base64
 import json
 import os
-import re
 import urllib.error
 import urllib.request
 
@@ -326,27 +325,6 @@ def cargoguard_answer(user_text, lang_name, context, vision_notes, history, tool
     return "当前暂无该站点/国家对应的明确规则，建议优先联系商家或平台官方客服。"
 
 
-
-def _env(name):
-    value = os.environ.get(name)
-    if value:
-        return value.strip()
-    path = os.path.join(ROOT, ".env")
-    if os.path.exists(path):
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, _, val = line.partition("=")
-                if key.strip() == name:
-                    return val.strip()
-    return None
-
-
-DEEPSEEK_KEY = _env("DEEPSEEK_API_KEY")
-SILICONFLOW_KEY = _env("SILICONFLOW_API_KEY")
-
 CARGO_GUARD_PROMPT = """必须遵守：
 1. 尊重买家本人意愿，绝不怂恿无端、不合理、没有证据的维权；拒绝协助恶意索赔、捏造证据、夸大损失。若买家意图是恶意薅商家，直接拒绝并提醒风险。
 2. 所有建议必须依托对应平台的买家保护政策与当地消费者法规；不确定时说明“以平台当前条款为准”，不得编造不存在的规则。
@@ -448,24 +426,6 @@ CARGO_GUARD_PROMPT = """必须遵守：
 跨境特有：清关被扣、关税争议、国际物流长期停滞、跨时区客服响应慢、海外仲裁周期长、语言壁垒、各站点买家保护法规差异；涉及 Amazon / Temu / Shein / 独立站 Shopify 时说明平台规则差异。
 若有图片识别结果，先说明从素材中识别到的关键信息，再给方案。
 不要输出 Markdown 的 # 标题、** 加粗、> 引用等符号；用纯文本与【】分节，段落之间空一行即可。不要自行添加免责提示，系统会在末尾统一追加。"""
-
-
-def has_llm():
-    return bool(DEEPSEEK_KEY)
-
-
-def has_vision():
-    return bool(SILICONFLOW_KEY)
-
-
-def _post(url, key, payload, timeout=90):
-    req = urllib.request.Request(
-        url,
-        data=json.dumps(payload).encode(),
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-    )
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return json.load(resp)
 
 
 VISION_PROMPT = (

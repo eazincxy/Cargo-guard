@@ -106,7 +106,7 @@ def load_documents():
             for i, row in enumerate(reader):
                 if not row or len(row) < 3:
                     continue
-                kind, tag, topic, *rest = row
+                kind, tag, topic = row[:3]
                 meta = {"kind": kind, "tag": tag, "topic": topic}
                 text = "，".join([x for x in row[3:] if x])
                 title = f"{topic}-{tag}"

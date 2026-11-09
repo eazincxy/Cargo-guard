@@ -3933,7 +3933,6 @@ def render_merchant_store(merchant):
 
 
 def render_product_detail(order):
-    lang_pack = T[st.session_state.lang]
     currency = order.get("currency", "USD")
     meta, spec = product_meta(order)
 

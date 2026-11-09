@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt ruff
+
+      - name: Lint (syntax errors and undefined names)
+        run: ruff check --select E9,F63,F7,F82 streamlit_app.py app
+
+      - name: Compile all Python files
+        run: python -m compileall -q streamlit_app.py app
+
+      - name: Validate component HTML
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          files = sorted(Path("components").rglob("index.html"))
+          assert files, "no component html found"
+          for p in files:
+              text = p.read_text(encoding="utf-8")
+              assert "<script>" in text and "</script>" in text, f"{p}: missing script tag"
+              assert "isStreamlitMessage" in text, f"{p}: missing Streamlit bridge"
+          print(f"checked {len(files)} component pages")
+          PY
+
+      - name: Streamlit AppTest smoke test
+        run: |
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+
+          at = AppTest.from_file("streamlit_app.py", default_timeout=180)
+          at.session_state["has_booted"] = True
+          at.run()
+          assert not at.exception, [str(e.value) for e in at.exception]
+          print("AppTest OK")
+          PY
