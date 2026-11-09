@@ -1,0 +1,16 @@
+law_id: law-us-01
+country: 美国
+country_code: US
+law_name: 无联邦统一网购冷静期法（州法：加州消费者救济法、纽约州消费者保护法）
+applicable_scope: 美国境内线上购物、跨境直邮卖给美国消费者
+core_rule:
+  cooling_period: none（联邦层面无法定冷静期）
+  start_from: 以商家公示退货政策为准
+  right: 退货权利主要来自商家公示政策；州法禁止商家刻意隐藏退货规则
+  freight_rule: 买家自行选错尺码/单纯不喜欢且无 free returns 时买家承担；商家尺码表错误、货不对板属商家责任，运费商家承担；订单标注 free returns 则商家承担
+exception:
+  - 商品已使用影响二次销售（外穿磨损、鞋盒吊牌破损）
+  - 部分品类按商家公示政策限制
+notice_requirement: 州法要求商家不得隐藏退货条件；free returns 以结算页标注为准
+refund_deadline: 以商家公示政策为准；留意 restocking fee 补货费
+complaint_channel: 州消费者保护机构 / 平台介入

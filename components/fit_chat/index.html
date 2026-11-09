@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8" /><style>html,body{margin:0;padding:0;background:transparent;}</style></head>
+<body>
+<script>
+(function () {
+  function post(type, payload) {
+    window.parent.postMessage(Object.assign({ isStreamlitMessage: true, type: type }, payload), "*");
+  }
+
+  function fit() {
+    try {
+      var doc = window.parent.document;
+      var chat = doc.querySelector(".cg-chat-scroll") || doc.querySelector(".cg-empty-fill");
+      var comp = doc.querySelector(".st-key-cg_chat_composer");
+      if (!chat || !comp) return;
+      // 输入卡片的左右位置跟随主内容列（block-container 左右各 8px）
+      var bc = doc.querySelector("[data-testid='stMain'] .block-container") ||
+        doc.querySelector("section.main .block-container");
+      var left = "344px", width = "calc(100vw - 360px)";
+      if (bc) {
+        var br = bc.getBoundingClientRect();
+        left = Math.round(br.left + 8) + "px";
+        width = Math.round(br.width - 16) + "px";
+        var root = doc.documentElement;
+        root.style.setProperty("--cg-chat-left", left);
+        root.style.setProperty("--cg-chat-width", width);
+      }
+      // 内联样式优先级最高，避免被 Streamlit 基础样式（width:100%）覆盖而跑出屏幕
+      comp.style.position = "fixed";
+      comp.style.left = left;
+      comp.style.right = "auto";
+      comp.style.width = width;
+      comp.style.bottom = "16px";
+      comp.style.margin = "0";
+      comp.style.zIndex = "999";
+      var compH = comp.getBoundingClientRect().height;
+      var chatTop = chat.getBoundingClientRect().top;
+      var vh = window.parent.innerHeight;
+      // 38px 为对话区与输入框之间的默认间距，另留 14px 底部间距与 2px 余量
+      var h = vh - chatTop - compH - 38 - 14 - 2;
+      chat.style.height = Math.max(80, Math.round(h)) + "px";
+    } catch (e) {}
+  }
+
+  function loop() {
+    var n = 0;
+    var timer = setInterval(function () {
+      fit();
+      if (++n > 8) clearInterval(timer);
+    }, 250);
+    fit();
+  }
+
+  window.addEventListener("message", function (event) {
+    var data = event.data || {};
+    if (data.type === "streamlit:render") loop();
+  });
+  window.parent.addEventListener("resize", loop);
+  post("streamlit:componentReady", { apiVersion: 1 });
+  loop();
+})();
+</script>
+</body>
+</html>

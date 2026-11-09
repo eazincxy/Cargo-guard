@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>History</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: transparent; color: #2f2f2f;
+    font-family: "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; }
+
+  .hist { padding: 1px 0 2px; }
+
+  .grp { font-size: 11.5px; font-weight: 700; color: #000000;
+    margin: 9px 3px 4px; letter-spacing: .1px; }
+  .grp:first-child { margin-top: 2px; }
+
+  .row { position: relative; display: flex; align-items: center; gap: 7px;
+    height: 38px; padding: 0 5px 0 10px; margin-bottom: 2px;
+    border-radius: 10px; cursor: pointer;
+    transition: background .13s ease; }
+  .row:hover, .row.menu-open { background: #f1f2f4; }
+  .row.active .t { font-weight: 600; color: #111111; }
+
+  .pin-mark { flex: 0 0 12px; width: 12px; height: 12px; color: #9a9a9a;
+    opacity: 0; }
+  .row.pinned .pin-mark { opacity: 1; }
+
+  .t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+    white-space: nowrap; color: #2f2f2f; line-height: 20px; }
+
+  .more { flex: 0 0 auto; width: 26px; height: 26px; padding: 0; border: 0;
+    border-radius: 7px; background: transparent; color: #8e8e8e; cursor: pointer;
+    font-size: 17px; line-height: 1; letter-spacing: 1px;
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transition: opacity .12s ease, background .12s ease, color .12s ease; }
+  .row:hover .more, .row.menu-open .more { opacity: 1; }
+  .more:hover { background: #e2e4e8; color: #333333; }
+
+  .rename-input { flex: 1 1 auto; min-width: 0; height: 27px;
+    border: 1px solid #d0d0d0; border-radius: 7px; padding: 0 8px;
+    font-size: 12.5px; font-family: inherit; color: #222222;
+    background: #ffffff; outline: none; }
+  .rename-input:focus { border-color: #9a9a9a; }
+
+  .empty { color: #9a9a9a; font-size: 12px; padding: 6px 3px; }
+</style>
+</head>
+<body>
+<div class="hist" id="hist"></div>
+
+<script>
+(function () {
+  var DATA = { items: [], labels: {} };
+  var SEQ = 0;
+  var OPEN_ID = null;
+  var RENAMING = null;
+  var histEl = document.getElementById("hist");
+
+  var ICON_TRASH =
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" ' +
+    'stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M2.6 4.4h10.8"/><path d="M6 4.4V2.9h4v1.5"/>' +
+    '<path d="M4.2 4.4l.6 8.1A1.2 1.2 0 0 0 6 13.6h4a1.2 1.2 0 0 0 1.2-1.1l.6-8.1"/>' +
+    '<path d="M6.6 7v4M9.4 7v4"/></svg>';
+  var ICON_PENCIL =
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" ' +
+    'stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M3.2 12.8l.6-2.8 7.3-7.3a1.2 1.2 0 0 1 1.7 0l.9.9a1.2 1.2 0 0 1 0 1.7' +
+    'L6.4 12.6l-3.2.2z"/><path d="M10.2 3.5l2.4 2.4"/></svg>';
+  var ICON_PIN =
+    '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" ' +
+    'stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M6 2.6h4l-.4 3.9 1.9 1.9v1.1H4.5V8.4l1.9-1.9L6 2.6z"/><path d="M8 9.5v3.9"/></svg>';
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  function post(value) {
+    window.parent.postMessage({ isStreamlitMessage: true, type: "streamlit:setComponentValue",
+      value: value, dataType: "json" }, "*");
+  }
+
+  function notifyHeight() {
+    window.parent.postMessage({ isStreamlitMessage: true, type: "streamlit:setFrameHeight",
+      height: Math.ceil(document.body.scrollHeight) + 6 }, "*");
+  }
+
+  function labels() {
+    return DATA.labels || {};
+  }
+
+  function buildGroups() {
+    var L = labels();
+    var pinned = [];
+    var rest = [];
+    var order = [];
+    var byGroup = {};
+    (DATA.items || []).forEach(function (it) {
+      if (it.pinned) {
+        pinned.push(it);
+      } else {
+        var g = it.group || "";
+        if (!byGroup[g]) { byGroup[g] = []; order.push(g); }
+        byGroup[g].push(it);
+      }
+    });
+    var groups = [];
+    if (pinned.length) groups.push({ label: L.pinned || "Pinned", items: pinned });
+    order.forEach(function (g) {
+      groups.push({ label: g, items: byGroup[g] });
+    });
+    return groups;
+  }
+
+  function itemHtml(it) {
+    var L = labels();
+    var open = OPEN_ID === it.id;
+    var cls = "row" + (it.active ? " active" : "") + (it.pinned ? " pinned" : "") +
+      (open ? " menu-open" : "");
+    var title = RENAMING === it.id
+      ? '<input class="rename-input" data-rename="' + esc(it.id) + '" value="' +
+        esc(it.titleRaw || "") + '" maxlength="60" />'
+      : '<span class="t">' + esc(it.title || L.untitled) + "</span>";
+    var pinMark = RENAMING === it.id ? "" : '<span class="pin-mark">' + ICON_PIN + "</span>";
+    var moreBtn = RENAMING === it.id ? "" :
+      '<button class="more" data-more="' + esc(it.id) + '" aria-label="more">···</button>';
+    return '<div class="' + cls + '" data-id="' + esc(it.id) + '">' +
+      pinMark + title + moreBtn + "</div>";
+  }
+
+  function render() {
+    var groups = buildGroups();
+    if (!groups.length) {
+      histEl.innerHTML = '<div class="empty">' + esc(labels().empty || "") + "</div>";
+      notifyHeight();
+      return;
+    }
+    histEl.innerHTML = groups.map(function (g) {
+      var head = g.label ? '<div class="grp">' + esc(g.label) + "</div>" : "";
+      return head + g.items.map(itemHtml).join("");
+    }).join("");
+    notifyHeight();
+    if (RENAMING) {
+      var input = histEl.querySelector('[data-rename="' + RENAMING + '"]');
+      if (input) {
+        input.focus();
+        input.select();
+      }
+    }
+  }
+
+  function findItem(id) {
+    for (var i = 0; i < DATA.items.length; i++) {
+      if (DATA.items[i].id === id) return DATA.items[i];
+    }
+    return null;
+  }
+
+  function commitRename(id, value) {
+    var it = findItem(id);
+    if (!it) return;
+    var title = String(value == null ? "" : value).trim().slice(0, 60);
+    RENAMING = null;
+    if (title) {
+      it.titleRaw = title;
+      it.title = title;
+    }
+    render();
+    if (title) post({ action: "rename", id: id, title: title, seq: ++SEQ });
+  }
+
+  var PMENU = null;
+
+  function parentDoc() {
+    try { return window.parent.document; } catch (err) { return null; }
+  }
+
+  function ensureMenuStyle() {
+    var pd = parentDoc();
+    if (!pd || pd.getElementById("cg-hist-menu-style")) return;
+    var st = pd.createElement("style");
+    st.id = "cg-hist-menu-style";
+    st.textContent =
+      "#cg-hist-menu{position:fixed;z-index:2147483647;width:150px;box-sizing:border-box;" +
+      "padding:6px;background:#ffffff;border:1px solid #ececec;border-radius:12px;" +
+      "box-shadow:0 10px 28px rgba(0,0,0,.14),0 2px 6px rgba(0,0,0,.06);" +
+      'font-family:"Segoe UI",Helvetica,Arial,sans-serif;font-size:12.5px;color:#333333;' +
+      "text-align:left;}" +
+      "#cg-hist-menu .mi{display:flex;align-items:center;gap:9px;height:32px;padding:0 9px;" +
+      "border-radius:8px;cursor:pointer;user-select:none;}" +
+      "#cg-hist-menu .mi:hover{background:#f4f4f5}" +
+      "#cg-hist-menu .mi.danger{color:#e5484d}" +
+      "#cg-hist-menu .mi.danger:hover{background:#fdf0f0}" +
+      "#cg-hist-menu .sep{height:1px;background:#f0f0f0;margin:4px 3px}" +
+      "#cg-hist-menu .mi svg{width:15px;height:15px;flex:0 0 15px}";
+    pd.head.appendChild(st);
+  }
+
+  function closeMenu() {
+    var pd = parentDoc();
+    if (PMENU && pd) {
+      try {
+        pd.removeEventListener("mousedown", onParentOutside, true);
+        pd.removeEventListener("scroll", onParentOutside, true);
+        window.parent.removeEventListener("resize", onParentOutside);
+      } catch (err) {}
+      if (PMENU.parentNode) PMENU.parentNode.removeChild(PMENU);
+    }
+    PMENU = null;
+    OPEN_ID = null;
+  }
+
+  function onParentOutside(e) {
+    if (PMENU && e.target && PMENU.contains(e.target)) return;
+    closeMenu();
+    render();
+  }
+
+  function doAction(act, id) {
+    var it = findItem(id);
+    closeMenu();
+    if (!it) { render(); return; }
+    if (act === "delete") {
+      render();
+      post({ action: "delete", id: id, seq: ++SEQ });
+    } else if (act === "rename") {
+      RENAMING = id;
+      render();
+    } else if (act === "pin") {
+      it.pinned = !it.pinned;
+      if (it.pinned) {
+        var idx = DATA.items.indexOf(it);
+        DATA.items.splice(idx, 1);
+        DATA.items.unshift(it);
+      }
+      render();
+      post({ action: it.pinned ? "pin" : "unpin", id: id, seq: ++SEQ });
+    }
+  }
+
+  function placeMenu(id) {
+    var it = findItem(id);
+    var row = histEl.querySelector('[data-id="' + id + '"]');
+    var pd = parentDoc();
+    if (!it || !row || !pd) { OPEN_ID = null; render(); return; }
+    var btn = row.querySelector("[data-more]");
+    var fr = window.frameElement;
+    if (!btn || !fr) { OPEN_ID = null; render(); return; }
+    var L = labels();
+    var pinLabel = it.pinned ? (L.unpin || "Unpin") : (L.pin || "Pin to top");
+
+    ensureMenuStyle();
+    var el = pd.createElement("div");
+    el.id = "cg-hist-menu";
+    el.innerHTML =
+      '<div class="mi danger" data-act="delete">' + ICON_TRASH + "<span>" +
+        esc(L.delete || "Delete") + "</span></div>" +
+      '<div class="sep"></div>' +
+      '<div class="mi" data-act="rename">' + ICON_PENCIL + "<span>" +
+        esc(L.rename || "Rename") + "</span></div>" +
+      '<div class="mi" data-act="pin">' + ICON_PIN + "<span>" +
+        esc(pinLabel) + "</span></div>";
+    pd.body.appendChild(el);
+    PMENU = el;
+
+    var frRect = fr.getBoundingClientRect();
+    var bRect = btn.getBoundingClientRect();
+    var right = frRect.left + bRect.right;
+    var top = frRect.top + bRect.bottom;
+    var mh = el.offsetHeight;
+    var left = Math.max(8, Math.round(right - el.offsetWidth));
+    var topPos = Math.round(top + 6);
+    var vh = window.parent.innerHeight;
+    if (topPos + mh > vh - 8) {
+      topPos = Math.round(Math.max(8, frRect.top + bRect.top - mh - 6));
+    }
+    el.style.left = left + "px";
+    el.style.top = topPos + "px";
+
+    el.addEventListener("mousedown", function (e) { e.stopPropagation(); });
+    el.addEventListener("click", function (e) {
+      e.stopPropagation();
+      var mi = e.target.closest(".mi");
+      if (mi) doAction(mi.getAttribute("data-act"), id);
+    });
+    pd.addEventListener("mousedown", onParentOutside, true);
+    pd.addEventListener("scroll", onParentOutside, true);
+    window.parent.addEventListener("resize", onParentOutside);
+  }
+
+  histEl.addEventListener("click", function (e) {
+    var more = e.target.closest("[data-more]");
+    if (more) {
+      e.stopPropagation();
+      var mid = more.getAttribute("data-more");
+      var wasOpen = OPEN_ID === mid;
+      closeMenu();
+      if (!wasOpen) {
+        OPEN_ID = mid;
+        render();
+        placeMenu(mid);
+      } else {
+        render();
+      }
+      return;
+    }
+
+    if (e.target.closest(".rename-input")) return;
+
+    var row = e.target.closest(".row");
+    if (row) {
+      var rid = row.getAttribute("data-id");
+      if (RENAMING) return;
+      if (OPEN_ID) {
+        closeMenu();
+        render();
+        return;
+      }
+      post({ action: "switch", id: rid, seq: ++SEQ });
+    }
+  });
+
+  document.addEventListener("click", function (e) {
+    if (e.target.closest("[data-more]") || e.target.closest(".row") ||
+        e.target.closest(".rename-input")) {
+      return;
+    }
+    if (OPEN_ID) {
+      closeMenu();
+      render();
+    }
+  });
+
+  histEl.addEventListener("focusout", function (e) {
+    var input = e.target.closest && e.target.closest("[data-rename]");
+    if (!input) return;
+    var id = input.getAttribute("data-rename");
+    setTimeout(function () {
+      if (RENAMING === id) commitRename(id, input.value);
+    }, 0);
+  });
+
+  histEl.addEventListener("keydown", function (e) {
+    var input = e.target.closest("[data-rename]");
+    if (!input) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitRename(input.getAttribute("data-rename"), input.value);
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      RENAMING = null;
+      render();
+    }
+  });
+
+  window.addEventListener("message", function (event) {
+    var data = event.data || {};
+    if (data.type !== "streamlit:render") return;
+    var args = data.args || {};
+    if (Array.isArray(args.items)) {
+      DATA.items = args.items.slice();
+      DATA.labels = args.labels || {};
+      if (OPEN_ID && !findItem(OPEN_ID)) OPEN_ID = null;
+      if (RENAMING && !findItem(RENAMING)) RENAMING = null;
+      render();
+      setTimeout(notifyHeight, 40);
+    }
+  });
+
+  window.parent.postMessage({ isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1 }, "*");
+  render();
+})();
+</script>
+</body>
+</html>

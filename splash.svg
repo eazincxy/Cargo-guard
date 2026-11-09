@@ -1,0 +1,149 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="110 90 580 290" width="1040" height="520" role="img" aria-label="CargoGuard startup animation">
+  <style>
+    /* 1. 航线描边动画：从左往右画出，0s → 0.9s（黑色细线，位于盾牌正上方） */
+    .cg-route {
+      fill: none;
+      stroke: #000000;
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      stroke-dasharray: 100;
+      stroke-dashoffset: 100;
+      animation: cgDrawRoute 0.9s ease-out 0s forwards;
+    }
+    @keyframes cgDrawRoute {
+      to { stroke-dashoffset: 0; }
+    }
+
+    /* 2. 图标淡入：包裹 → JP → KR → TH → DE → GB → US，0.9s → 1.87s */
+    .cg-icon {
+      fill: none;
+      stroke: #000000;
+      stroke-width: 1.5;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      opacity: 0;
+      animation: cgFadeIn 0.25s ease-out forwards;
+    }
+    @keyframes cgFadeIn {
+      from { opacity: 0; transform: translateY(5px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* 3. 盾牌淡入：1.8s → 2.1s */
+    .cg-shield {
+      fill: none;
+      stroke: #000000;
+      stroke-width: 1.8;
+      stroke-linejoin: round;
+      opacity: 0;
+      transform-box: fill-box;
+      transform-origin: center;
+      animation: cgShieldIn 0.3s ease-out 1.8s forwards;
+    }
+    @keyframes cgShieldIn {
+      from { opacity: 0; transform: scale(0.92); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    /* 4. 主标题淡入：2.05s → 2.33s */
+    .cg-title {
+      fill: #000000;
+      font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 34px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-anchor: middle;
+      opacity: 0;
+      animation: cgRiseIn 0.28s ease-out 2.05s forwards;
+    }
+
+    /* 5. 副标题淡入：2.28s → 2.53s */
+    .cg-subtitle {
+      fill: #000000;
+      font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      letter-spacing: 1.2px;
+      text-anchor: middle;
+      opacity: 0;
+      animation: cgRiseIn 0.25s ease-out 2.28s forwards;
+    }
+    @keyframes cgRiseIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+
+  <g>
+    <!-- 跨境航线：水平横置在盾牌正上方（pathLength 归一化，便于描边生长） -->
+    <path class="cg-route" pathLength="100" d="M 150 160 Q 400 100 650 160" />
+
+    <!-- 包裹图标 -->
+    <g transform="translate(175,140)">
+      <g class="cg-icon" style="animation-delay:0.90s">
+        <rect x="-10" y="-8" width="20" height="16" rx="2" />
+        <path d="M -10 -1 H 10" />
+        <path d="M -2 -8 V -1" />
+      </g>
+    </g>
+
+    <!-- 日本 JP -->
+    <g transform="translate(240,128)">
+      <g class="cg-icon" style="animation-delay:1.02s">
+        <rect x="-10" y="-7" width="20" height="14" rx="2" />
+        <circle cx="0" cy="0" r="3.4" />
+      </g>
+    </g>
+
+    <!-- 韩国 KR -->
+    <g transform="translate(305,120)">
+      <g class="cg-icon" style="animation-delay:1.14s">
+        <rect x="-10" y="-7" width="20" height="14" rx="2" />
+        <circle cx="0" cy="0" r="3" />
+        <path d="M -7 -5 L -3 -5 M 3 5 L 7 5" />
+      </g>
+    </g>
+
+    <!-- 泰国 TH -->
+    <g transform="translate(370,116)">
+      <g class="cg-icon" style="animation-delay:1.26s">
+        <rect x="-10" y="-7" width="20" height="14" rx="2" />
+        <path d="M -10 -2.5 H 10 M -10 2.5 H 10" />
+      </g>
+    </g>
+
+    <!-- 德国 DE -->
+    <g transform="translate(435,116)">
+      <g class="cg-icon" style="animation-delay:1.38s">
+        <rect x="-10" y="-7" width="20" height="14" rx="2" />
+        <path d="M -10 -2.3 H 10 M -10 2.3 H 10" />
+      </g>
+    </g>
+
+    <!-- 英国 GB -->
+    <g transform="translate(500,120)">
+      <g class="cg-icon" style="animation-delay:1.50s">
+        <rect x="-10" y="-7" width="20" height="14" rx="2" />
+        <path d="M 0 -7 V 7 M -10 0 H 10" />
+      </g>
+    </g>
+
+    <!-- 美国 US -->
+    <g transform="translate(565,128)">
+      <g class="cg-icon" style="animation-delay:1.62s">
+        <rect x="-10" y="-7" width="20" height="14" rx="2" />
+        <rect x="-10" y="-7" width="9" height="7" rx="1" />
+        <path d="M 2 -2 H 10 M 2 2 H 10" />
+      </g>
+    </g>
+
+    <!-- 盾牌：位于航线正下方居中 -->
+    <g transform="translate(400,230)">
+      <path class="cg-shield" d="M 0 -34 L 28 -24 V 4 C 28 22 14 32 0 38 C -14 32 -28 22 -28 4 V -24 Z" />
+    </g>
+
+    <!-- 主标题与副标题 -->
+    <text class="cg-title" x="400" y="322">CargoGuard</text>
+    <text class="cg-subtitle" x="400" y="350">Cross-border After-sale RAG Agent</text>
+  </g>
+</svg>

@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Orders</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: transparent; color: #333333;
+    font-family: "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; }
+  .app { position: relative; padding: 4px 2px 10px; }
+
+  .view { opacity: 0; visibility: hidden; transition: opacity .22s ease; position: absolute;
+    left: 0; right: 0; top: 0; }
+  .view.active { opacity: 1; visibility: visible; position: relative; }
+
+  /* ---------- 列表 ---------- */
+  .card {
+    display: flex; gap: 12px;
+    background: #ffffff; border: 1px solid #ececec; border-radius: 12px;
+    padding: 12px; margin-bottom: 10px; cursor: pointer;
+    transition: border-color .15s ease, background .15s ease;
+  }
+  .card:hover { border-color: #dedede; background: #fcfcfc; }
+
+  .thumb {
+    flex: 0 0 62px; width: 62px; height: 62px; border-radius: 10px;
+    background: #f3f3f3; display: flex; align-items: center; justify-content: center;
+    font-size: 24px; cursor: pointer; transition: background .15s ease;
+  }
+  .thumb:hover { background: #ebebeb; }
+  .thumb.lg { flex: 0 0 76px; width: 76px; height: 76px; font-size: 30px; }
+
+  .card-main { flex: 1 1 auto; min-width: 0; }
+  .shop { font-size: 11.5px; color: #8f8f8f; margin-bottom: 2px;
+    display: flex; align-items: center; gap: 6px; }
+  .shop .oid { color: #b0b0b0; font-weight: 400; }
+  .title { font-size: 13px; font-weight: 600; color: #2f2f2f; margin-bottom: 3px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .spec { font-size: 11.5px; color: #9a9a9a; margin-bottom: 6px; }
+
+  .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 6px; }
+  .tag-svc {
+    display: inline-block; padding: 1px 7px; border-radius: 5px;
+    background: #eef6f0; color: #4f7a5c; font-size: 10.5px; line-height: 17px;
+    border: 1px solid #e2efe6;
+  }
+
+  .meta { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: #9a9a9a; }
+  .price { margin-left: auto; color: #2f2f2f; font-weight: 600; font-size: 13px; }
+
+  .card-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 8px; }
+  .btn {
+    height: 28px; padding: 0 12px; border-radius: 8px; border: 1px solid #e2e2e2;
+    background: #ffffff; color: #444444; font-size: 12px; cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .btn:hover { background: #f5f5f5; border-color: #d5d5d5; }
+  .btn.ghost { border-color: #ececec; color: #8c8c8c; }
+  .btn.small { height: 26px; padding: 0 10px; font-size: 11.5px; }
+
+  /* ---------- 详情 ---------- */
+  .detail-top { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .back {
+    width: 30px; height: 30px; border-radius: 8px; border: 1px solid #e6e6e6;
+    background: #ffffff; color: #444444; font-size: 14px; cursor: pointer;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background .15s ease;
+  }
+  .back:hover { background: #f5f5f5; }
+  .status {
+    margin-left: auto; padding: 3px 10px; border-radius: 6px;
+    background: #f2f2f2; color: #6f6f6f; font-size: 11.5px; border: 1px solid #e9e9e9;
+  }
+
+  .panel {
+    background: #ffffff; border: 1px solid #ececec; border-radius: 12px;
+    padding: 12px; margin-bottom: 10px;
+  }
+  .shop-row { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+  .shop-avatar {
+    width: 26px; height: 26px; border-radius: 8px; background: #f1f1f1;
+    display: flex; align-items: center; justify-content: center; font-size: 13px;
+  }
+  .shop-name { font-size: 12.5px; font-weight: 600; color: #3a3a3a; }
+  .shop-info { font-size: 11px; color: #a0a0a0; }
+
+  .prod-row { display: flex; gap: 12px; }
+  .prod-row .thumb { flex: 0 0 76px; width: 76px; height: 76px; font-size: 30px; }
+  .prod-info { flex: 1 1 auto; min-width: 0; }
+
+  .btn-row { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
+
+  .summary { display: flex; justify-content: space-between; padding: 4px 0;
+    font-size: 12px; color: #8f8f8f; }
+  .summary .v { color: #3a3a3a; }
+  .summary.total { border-top: 1px solid #f0f0f0; margin-top: 6px; padding-top: 8px; }
+  .summary.total .v { font-weight: 600; color: #2f2f2f; }
+
+  .sect-title { font-size: 12px; font-weight: 600; color: #3a3a3a; margin: 0 0 8px; }
+  details.order-info { background: #ffffff; border: 1px solid #ececec; border-radius: 12px; padding: 10px 12px; }
+  details.order-info summary {
+    list-style: none; cursor: pointer; font-size: 12.5px; font-weight: 600; color: #3a3a3a;
+    display: flex; align-items: center; gap: 6px;
+  }
+  details.order-info summary::-webkit-details-marker { display: none; }
+  details.order-info summary::after { content: "▾"; color: #b0b0b0; margin-left: auto; font-size: 11px; }
+  details.order-info[open] summary::after { content: "▴"; }
+
+  .info-grid { margin-top: 10px; border-top: 1px solid #f3f3f3; padding-top: 6px; }
+  .info-row { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; font-size: 11.5px; }
+  .info-row .k { color: #9a9a9a; }
+  .info-row .v { color: #3a3a3a; text-align: right; word-break: break-all; }
+  .copy {
+    height: 22px; padding: 0 8px; border-radius: 6px; border: 1px solid #e6e6e6;
+    background: #ffffff; color: #6f6f6f; font-size: 10.5px; cursor: pointer; margin-left: 6px;
+  }
+  .copy:hover { background: #f5f5f5; }
+
+  /* ---------- 商品占位页 ---------- */
+  .ph { text-align: center; padding: 34px 12px; color: #9a9a9a; }
+  .ph .big { font-size: 40px; margin-bottom: 10px; }
+  .ph h4 { margin: 0 0 6px; font-size: 13.5px; color: #3a3a3a; font-weight: 600; }
+  .ph p { margin: 0; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ================= 列表 ================= -->
+  <div class="view active" id="listView"></div>
+
+  <!-- ================= 详情 ================= -->
+  <div class="view" id="detailView">
+    <div class="detail-top">
+      <button class="back" id="btnBack">←</button>
+      <span class="status" id="dStatus">Pending Tax</span>
+    </div>
+    <div id="detailBody"></div>
+  </div>
+
+  <!-- ================= 商品占位 ================= -->
+  <div class="view" id="productView">
+    <div class="detail-top">
+      <button class="back" id="btnBackProduct">←</button>
+    </div>
+    <div class="panel">
+      <div class="ph">
+        <div class="big" id="phIcon">📦</div>
+        <h4 id="phTitle">Product Detail</h4>
+        <p>Product detail page is a placeholder in this demo.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var ORDERS = [
+    {
+      id: "ORD-1008", shop: "Milano Style Outlet", shopInfo: "Milan, Italy · 4.8",
+      title: "Wool Blend Trench Coat", spec: "Color: Camel · Size: M",
+      price: "EUR 110.00", date: "2026-10-26 09:40", qty: 1, icon: "🧥",
+      status: "Pending Tax",
+      tags: ["Free Shipping", "7-day No Reason Return"],
+      pay: "Credit Card · EUR 110.00",
+      addr: "Tianhe District, Guangzhou, Guangdong, China",
+      txn: "TXN-20261026-884213", created: "2026-10-26 09:40", delivered: "—",
+      discounts: [["Subtotal", "EUR 110.00"], ["Shipping", "EUR 0.00"], ["Coupon", "-EUR 0.00"]]
+    },
+    {
+      id: "ORD-1001", shop: "Aurora Skin Lab", shopInfo: "Tokyo, Japan · 4.9",
+      title: "Hydrating Repair Serum 30ml", spec: "30ml · Single Item",
+      price: "CNY 180.00", date: "2026-10-28 10:12", qty: 1, icon: "🧴",
+      status: "In Clearance",
+      tags: ["Free Shipping", "Tax Included", "7-day No Reason Return"],
+      pay: "Alipay · CNY 180.00",
+      addr: "Chaoyang District, Beijing, China",
+      txn: "TXN-20261028-551207", created: "2026-10-28 10:12", delivered: "—",
+      discounts: [["Subtotal", "CNY 180.00"], ["Shipping", "CNY 0.00"], ["Coupon", "-CNY 10.00"]]
+    },
+    {
+      id: "ORD-1006", shop: "Sunrise Audio", shopInfo: "Seoul, South Korea · 4.7",
+      title: "Wireless Earbuds Pro", spec: "White · Charging Case",
+      price: "CNY 268.00", date: "2026-10-18 11:32", qty: 1, icon: "🎧",
+      status: "Signed",
+      tags: ["Free Shipping", "Tax Included"],
+      pay: "WeChat Pay · CNY 268.00",
+      addr: "Pudong New Area, Shanghai, China",
+      txn: "TXN-20261018-330914", created: "2026-10-18 11:32", delivered: "2026-10-25 15:08",
+      discounts: [["Subtotal", "CNY 268.00"], ["Shipping", "CNY 0.00"], ["Coupon", "-CNY 20.00"]]
+    }
+  ];
+
+  var listView = document.getElementById("listView");
+  var detailView = document.getElementById("detailView");
+  var productView = document.getElementById("productView");
+  var detailBody = document.getElementById("detailBody");
+  var dStatus = document.getElementById("dStatus");
+
+  function esc(s) {
+    return String(s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  function show(view) {
+    [listView, detailView, productView].forEach(function (v) { v.classList.remove("active"); });
+    view.classList.add("active");
+    window.parent.postMessage({ isStreamlitMessage: true, type: "streamlit:setFrameHeight",
+      height: document.body.scrollHeight + 8 }, "*");
+  }
+
+  function tagsHtml(tags) {
+    return '<div class="tags">' + tags.map(function (t) {
+      return '<span class="tag-svc">' + esc(t) + "</span>";
+    }).join("") + "</div>";
+  }
+
+  function renderList() {
+    listView.innerHTML = ORDERS.map(function (o, i) {
+      return '<div class="card" data-idx="' + i + '">' +
+        '<div class="thumb" data-thumb="' + i + '">' + o.icon + "</div>" +
+        '<div class="card-main">' +
+          '<div class="shop">' + esc(o.shop) + '<span class="oid">' + esc(o.id) + "</span></div>" +
+          '<div class="title">' + esc(o.title) + "</div>" +
+          '<div class="spec">' + esc(o.spec) + "</div>" +
+          tagsHtml(o.tags) +
+          '<div class="meta"><span>' + esc(o.date) + "</span><span>× " + o.qty + "</span>" +
+            '<span class="price">' + esc(o.price) + "</span></div>" +
+          '<div class="card-actions">' +
+            '<button class="btn small ghost" data-act="contact" data-idx="' + i + '">Contact Shop</button>' +
+            '<button class="btn small" data-act="detail" data-idx="' + i + '">View Detail</button>' +
+          "</div>" +
+        "</div>" +
+      "</div>";
+    }).join("");
+  }
+
+  function renderDetail(o) {
+    dStatus.textContent = o.status;
+    var rows = [
+      ["Payment Method", o.pay],
+      ["Shipping Address", o.addr],
+      ["Transaction ID", o.txn, true],
+      ["Create Time", o.created],
+      ["Delivery Time", o.delivered]
+    ];
+    detailBody.innerHTML =
+      '<div class="panel">' +
+        '<div class="shop-row">' +
+          '<div class="shop-avatar">🏬</div>' +
+          "<div><div class=\"shop-name\">" + esc(o.shop) + "</div>" +
+          '<div class="shop-info">' + esc(o.shopInfo) + "</div></div>" +
+        "</div>" +
+        '<div class="prod-row">' +
+          '<div class="thumb" data-thumb="detail">' + o.icon + "</div>" +
+          '<div class="prod-info">' +
+            '<div class="title">' + esc(o.title) + "</div>" +
+            '<div class="spec">' + esc(o.spec) + "</div>" +
+            tagsHtml(o.tags) +
+            '<div class="meta"><span>× ' + o.qty + "</span>" +
+              '<span class="price">' + esc(o.price) + "</span></div>" +
+          "</div>" +
+        "</div>" +
+        '<div class="btn-row">' +
+          '<button class="btn" data-act="tips">Product Tips</button>' +
+          '<button class="btn" data-act="aftersales">Apply After-sales</button>' +
+          '<button class="btn" data-act="cart">Add to Cart</button>' +
+        "</div>" +
+      "</div>" +
+      '<div class="panel">' +
+        '<p class="sect-title">Price Summary</p>' +
+        o.discounts.map(function (d) {
+          return '<div class="summary"><span>' + esc(d[0]) + '</span><span class="v">' + esc(d[1]) + "</span></div>";
+        }).join("") +
+        '<div class="summary total"><span>Total Paid</span><span class="v">' + esc(o.price) + "</span></div>" +
+      "</div>" +
+      '<details class="order-info">' +
+        "<summary>Order Information</summary>" +
+        '<div class="info-grid">' +
+          rows.map(function (r) {
+            var copy = r[2] ? '<button class="copy" data-copy="' + esc(r[1]) + '">Copy</button>' : "";
+            return '<div class="info-row"><span class="k">' + esc(r[0]) + '</span>' +
+              '<span class="v">' + esc(r[1]) + copy + "</span></div>";
+          }).join("") +
+        "</div>" +
+      "</details>";
+    return rows;
+  }
+
+  listView.addEventListener("click", function (e) {
+    var act = e.target.closest("[data-act]");
+    if (act) {
+      e.stopPropagation();
+      var o = ORDERS[Number(act.getAttribute("data-idx"))];
+      if (act.getAttribute("data-act") === "detail" || act.getAttribute("data-act") === "contact") {
+        openDetail(o);
+      }
+      return;
+    }
+    var thumb = e.target.closest("[data-thumb]");
+    if (thumb) {
+      e.stopPropagation();
+      openProduct(ORDERS[Number(thumb.getAttribute("data-thumb"))]);
+      return;
+    }
+    var card = e.target.closest(".card");
+    if (card) openDetail(ORDERS[Number(card.getAttribute("data-idx"))]);
+  });
+
+  detailBody.addEventListener("click", function (e) {
+    var copy = e.target.closest("[data-copy]");
+    if (copy) {
+      var text = copy.getAttribute("data-copy");
+      if (navigator.clipboard) navigator.clipboard.writeText(text);
+      copy.textContent = "Copied";
+      setTimeout(function () { copy.textContent = "Copy"; }, 1200);
+      return;
+    }
+    if (e.target.closest("[data-thumb]")) {
+      openProduct(current);
+      return;
+    }
+    var act = e.target.closest("[data-act]");
+    if (act) {
+      act.textContent = act.textContent;
+    }
+  });
+
+  var current = null;
+
+  function openDetail(o) {
+    current = o;
+    renderDetail(o);
+    show(detailView);
+  }
+
+  function openProduct(o) {
+    document.getElementById("phIcon").textContent = o.icon;
+    document.getElementById("phTitle").textContent = o.title;
+    show(productView);
+  }
+
+  document.getElementById("btnBack").addEventListener("click", function () {
+    show(listView);
+  });
+  document.getElementById("btnBackProduct").addEventListener("click", function () {
+    if (current) show(detailView); else show(listView);
+  });
+
+  renderList();
+  show(listView);
+
+  window.parent.postMessage({ isStreamlitMessage: true, type: "streamlit:componentReady", apiVersion: 1 }, "*");
+})();
+</script>
+</body>
+</html>

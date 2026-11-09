@@ -1,0 +1,15 @@
+law_id: law-de-01
+country: 德国 / 欧盟
+country_code: DE/EU
+law_name: 欧盟消费者权利指令 2011/83/EU，德国 BGB §312g Widerrufsrecht
+applicable_scope: 欧盟境内远程线上购物
+core_rule:
+  cooling_period: 14 days
+  start_from: 签收日
+  right: 法定撤回权，商家不能单方剥夺
+  freight_rule: 商家下单前未告知退回运费由买家承担，则退回运费商家承担
+exception:
+  - 数字内容、软件授权已经激活下载
+  - 定制商品
+notice_requirement: 例外条款必须前置清晰告知
+complaint_channel: Verbraucherzentrale

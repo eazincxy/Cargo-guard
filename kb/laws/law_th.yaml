@@ -1,0 +1,17 @@
+law_id: law-th-01
+country: 泰国
+country_code: TH
+law_name: 《直销与直销营销法 B.E.2545（2002）》
+applicable_scope: 线上远程通信购物、跨境直邮卖给泰国消费者
+core_rule:
+  cooling_period: 7 days
+  start_from: 签收日
+  right: 无理由解约退货
+  freight_rule: 冷静期主观退货默认买家承担退回运费；商家责任（破损、错发、描述不符）商家承担运费
+exception:
+  - 定制商品
+  - 商品明显使用磨损、价值大幅下降
+  - 生鲜、贴身卫生耗材
+notice_requirement: 例外限制必须提前单独告知消费者，否则无效
+refund_deadline: 商家收到解约通知后 15 天内退款
+complaint_channel: OCPB 泰国消费者保护委员会，热线 1166

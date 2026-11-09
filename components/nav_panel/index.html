@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>CargoGuard Navigation</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    color: #000000;
+  }
+  .nav-list {
+    display: flex;
+    flex-direction: column;
+    padding: 2px;
+  }
+  .nav-item {
+    position: relative;
+    display: block;
+    width: 100%;
+    padding: 11px 12px 11px 14px;
+    border: 0;
+    border-bottom: 1px solid #eef0f3;
+    border-radius: 12px;
+    background: transparent;
+    color: #000000;
+    font-family: inherit;
+    font-size: 14px;
+    font-weight: 500;
+    line-height: 1.3;
+    text-align: left;
+    cursor: pointer;
+    transition: box-shadow .28s ease, border-color .28s ease;
+  }
+  .nav-item:last-child { border-bottom-color: transparent; }
+  .nav-item:hover { background: #e6e9ee; }
+  .nav-item.is-active {
+    background: #f2f4f7;
+    border-bottom-color: transparent;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, .04);
+  }
+  .nav-item.is-active:hover { background: #e2e6ec; }
+  /* 选中项左上角的小色条：宽度从 0 滑出 */
+  .nav-item .bar {
+    position: absolute;
+    left: 14px;
+    top: 7px;
+    width: 0;
+    height: 3px;
+    border-radius: 2px;
+    background: #111111;
+    transition: width .3s cubic-bezier(.4, 0, .2, 1);
+  }
+  .nav-item.is-active .bar { width: 20px; }
+  .nav-item .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    transition: padding-top .3s cubic-bezier(.4, 0, .2, 1);
+  }
+  .nav-item.is-active .row { padding-top: 9px; }
+  .nav-item .ico {
+    width: 17px;
+    height: 17px;
+    flex: 0 0 17px;
+    stroke: #000000;
+    fill: none;
+    stroke-width: 1.6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .nav-item .label { color: #000000; }
+  /* 描述区：0fr → 1fr 的高度滑动动画 */
+  .nav-item .desc-wrap {
+    display: grid;
+    grid-template-rows: 0fr;
+    opacity: 0;
+    transition: grid-template-rows .32s cubic-bezier(.4, 0, .2, 1),
+                opacity .2s ease;
+  }
+  .nav-item.is-active .desc-wrap {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
+  .nav-item .desc {
+    display: block;
+    overflow: hidden;
+    min-height: 0;
+  }
+  .nav-item .desc > span {
+    display: block;
+    padding-top: 6px;
+    font-size: 12px;
+    line-height: 1.55;
+    font-weight: 400;
+    color: #8a8a8a;
+  }
+</style>
+</head>
+<body>
+  <nav class="nav-list" id="navList"></nav>
+
+<script>
+(function () {
+  /* 默认导航项：与 streamlit_app.py 的 page 一一对应 */
+  var TABS = ["ai", "merchant", "platform", "orders", "rate"];
+  var LABELS = {
+    ai: "AI Agent",
+    merchant: "Merchant Support",
+    platform: "Platform Support",
+    orders: "Orders",
+    rate: "Exchange Rate"
+  };
+  var DESCS = {};
+  var ICONS = {
+    ai: '<rect x="4" y="7" width="16" height="12" rx="3"/><path d="M12 3v4"/><circle cx="9" cy="13" r="1"/><circle cx="15" cy="13" r="1"/>',
+    merchant: '<path d="M4 9h16l-1 11H5L4 9z"/><path d="M9 9V6.5a3 3 0 0 1 6 0V9"/>',
+    platform: '<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+    orders: '<path d="M3 7l9-4 9 4-9 4-9-4z"/><path d="M3 7v10l9 4 9-4V7"/><path d="M12 11v10"/>',
+    rate: '<path d="M4 7h13l-3-3M20 17H7l3 3"/><path d="M4 7l3 3M20 17l-3-3"/>'
+  };
+
+  var navList = document.getElementById("navList");
+  var activeTab = TABS[0];
+  var ready = false;
+
+  function post(type, payload) {
+    window.parent.postMessage(
+      Object.assign({ isStreamlitMessage: true, type: type }, payload || {}),
+      "*"
+    );
+  }
+
+  function setFrameHeight() {
+    post("streamlit:setFrameHeight", { height: document.body.scrollHeight });
+  }
+
+  function esc(s) {
+    return String(s == null ? "" : s).replace(/[&<>"]/g, function (c) {
+      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c];
+    });
+  }
+
+  function render() {
+    navList.innerHTML = "";
+    TABS.forEach(function (tab) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "nav-item" + (tab === activeTab ? " is-active" : "");
+      btn.dataset.tab = tab;
+      btn.innerHTML =
+        '<span class="bar"></span>' +
+        '<span class="row">' +
+          '<svg class="ico" viewBox="0 0 24 24">' + (ICONS[tab] || "") + "</svg>" +
+          '<span class="label">' + esc(LABELS[tab] || tab) + "</span>" +
+        "</span>" +
+        '<span class="desc-wrap"><span class="desc"><span>' +
+          esc(DESCS[tab] || "") +
+        "</span></span></span>";
+      btn.addEventListener("click", function () { switchTab(tab, true); });
+      navList.appendChild(btn);
+    });
+    setFrameHeight();
+  }
+
+  function switchTab(tab, notify) {
+    if (TABS.indexOf(tab) === -1) return;
+    if (tab === activeTab && notify !== "force") return;
+    activeTab = tab;
+    Array.prototype.forEach.call(navList.children, function (el) {
+      el.classList.toggle("is-active", el.dataset.tab === tab);
+    });
+    // 展开动画过程中高度会变化，结束后再上报一次
+    setTimeout(setFrameHeight, 120);
+    setTimeout(setFrameHeight, 360);
+    // 子 → 父：把选中的页面回传给 Streamlit
+    if (notify) {
+      post("streamlit:setComponentValue", {
+        value: { page: tab, seq: Date.now() + Math.random() },
+        dataType: "json"
+      });
+    }
+  }
+
+  /* 父 → 子：Streamlit 每次 rerun 都会下发 render 消息 */
+  window.addEventListener("message", function (event) {
+    var data = event.data || {};
+    if (data.type !== "streamlit:render") return;
+    var args = data.args || {};
+    if (args.tabs && args.tabs.length) TABS = args.tabs;
+    if (args.labels) LABELS = args.labels;
+    if (args.descriptions) DESCS = args.descriptions;
+    if (args.active_tab) activeTab = args.active_tab;
+    render();
+    setTimeout(setFrameHeight, 360);
+    if (!ready) {
+      ready = true;
+      post("streamlit:componentReady", { apiVersion: 1 });
+    }
+  });
+
+  post("streamlit:componentReady", { apiVersion: 1 });
+})();
+</script>
+</body>
+</html>

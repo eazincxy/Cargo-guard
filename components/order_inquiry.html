@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Order Inquiry</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: transparent;
+    color: #333333;
+    font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 13px;
+  }
+  .wrap { padding: 4px 2px 8px; }
+
+  /* 顶部：搜索 + 按钮 + 日期区间 */
+  .toolbar {
+    display: flex; align-items: center; gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .search {
+    flex: 1 1 260px;
+    min-width: 200px;
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid #e2e2e2;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #333333;
+    font-size: 13px;
+    outline: none;
+    transition: border-color .15s ease;
+  }
+  .search::placeholder { color: #a8a8a8; }
+  .search:focus { border-color: #c4c4c4; }
+
+  .btn {
+    height: 32px;
+    padding: 0 14px;
+    border-radius: 8px;
+    border: 1px solid #e2e2e2;
+    background: #ffffff;
+    color: #333333;
+    font-size: 13px;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+    white-space: nowrap;
+  }
+  .btn:hover { background: #f6f6f6; border-color: #d6d6d6; }
+  .btn.primary { background: #ededed; border-color: #e0e0e0; font-weight: 600; }
+  .btn.primary:hover { background: #e4e4e4; }
+
+  .dates {
+    display: flex; align-items: center; gap: 6px;
+    margin-left: auto;
+  }
+  .dates .label { color: #9a9a9a; font-size: 12px; }
+  .date {
+    height: 32px;
+    padding: 0 8px;
+    border: 1px solid #e2e2e2;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #444444;
+    font-size: 12px;
+    outline: none;
+  }
+  .date:focus { border-color: #c4c4c4; }
+  .dash { color: #bdbdbd; }
+
+  /* 标签页 */
+  .tabs {
+    display: flex; gap: 20px;
+    border-bottom: 1px solid #ececec;
+    margin-bottom: 2px;
+  }
+  .tab {
+    position: relative;
+    padding: 0 2px 9px;
+    font-size: 12.5px;
+    color: #8c8c8c;
+    background: none; border: 0;
+    cursor: pointer;
+    transition: color .15s ease;
+  }
+  .tab:hover { color: #4a4a4a; }
+  .tab.active { color: #2f2f2f; font-weight: 600; }
+  .tab.active::after {
+    content: "";
+    position: absolute; left: 0; right: 0; bottom: -1px;
+    height: 2px; background: #9a9a9a; border-radius: 2px;
+  }
+  .tab .count { color: #b0b0b0; font-weight: 400; }
+
+  /* 表格 */
+  .table-wrap { padding-top: 2px; }
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    text-align: left;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: #9a9a9a;
+    letter-spacing: .3px;
+    padding: 8px 10px;
+    border-bottom: 1px solid #ededed;
+    white-space: nowrap;
+  }
+  thead th:last-child { text-align: right; }
+  tbody td {
+    padding: 9px 10px;
+    border-bottom: 1px solid #f2f2f2;
+    color: #3a3a3a;
+    font-size: 12.5px;
+    white-space: nowrap;
+  }
+  tbody tr { transition: background .12s ease; }
+  tbody tr:hover { background: #fafafa; }
+  td.oid { color: #2f2f2f; font-weight: 600; }
+  td.amount { color: #444444; }
+  td:last-child { text-align: right; }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 6px;
+    background: #f1f1f1;
+    color: #6f6f6f;
+    font-size: 11px;
+    font-weight: 500;
+    line-height: 18px;
+  }
+  .badge.done { background: #f4f4f4; color: #7a7a7a; }
+
+  .linkbtn {
+    height: 26px;
+    padding: 0 10px;
+    border-radius: 7px;
+    border: 1px solid #e2e2e2;
+    background: #ffffff;
+    color: #333333;
+    font-size: 12px;
+    cursor: pointer;
+    transition: background .15s ease, border-color .15s ease;
+  }
+  .linkbtn:hover { background: #f4f4f4; border-color: #d4d4d4; }
+
+  .empty {
+    padding: 32px 10px;
+    text-align: center;
+    color: #a5a5a5;
+    font-size: 12.5px;
+  }
+
+  /* 详情弹层：保持纯灰白 */
+  .mask {
+    position: fixed; inset: 0;
+    background: rgba(0, 0, 0, .18);
+    display: none;
+    align-items: center; justify-content: center;
+    z-index: 50;
+  }
+  .mask.show { display: flex; }
+  .dialog {
+    width: min(420px, 88vw);
+    background: #ffffff;
+    border: 1px solid #ececec;
+    border-radius: 12px;
+    padding: 18px 20px 16px;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, .12);
+  }
+  .dialog h3 {
+    margin: 0 0 12px;
+    font-size: 14px; font-weight: 600; color: #2f2f2f;
+  }
+  .row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #f3f3f3; }
+  .row:last-of-type { border-bottom: 0; }
+  .row .k { color: #9a9a9a; font-size: 12px; }
+  .row .v { color: #3a3a3a; font-size: 12.5px; }
+  .dialog .actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="toolbar">
+    <input id="q" class="search" type="text" placeholder="Search by order ID, merchant or product" />
+    <button class="btn primary" id="btnSearch">Search</button>
+    <button class="btn" id="btnReset">Reset</button>
+    <div class="dates">
+      <span class="label">Date</span>
+      <input id="d1" class="date" type="date" />
+      <span class="dash">–</span>
+      <input id="d2" class="date" type="date" />
+    </div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab active" data-tab="order">Order <span class="count">(1)</span></button>
+    <button class="tab" data-tab="merchant">Merchant <span class="count">(1)</span></button>
+    <button class="tab" data-tab="product">Product <span class="count">(1)</span></button>
+  </div>
+
+  <div class="table-wrap">
+    <table>
+      <thead id="thead"></thead>
+      <tbody id="tbody"></tbody>
+    </table>
+    <div id="empty" class="empty" style="display:none">No matching records.</div>
+  </div>
+</div>
+
+<div class="mask" id="mask">
+  <div class="dialog">
+    <h3 id="dlgTitle">Order detail</h3>
+    <div id="dlgBody"></div>
+    <div class="actions"><button class="btn" id="dlgClose">Close</button></div>
+  </div>
+</div>
+
+<script>
+  var ORDERS = [
+    { order_id: "ORD-1008", merchant: "Milano Style Outlet", product: "Wool Blend Trench Coat",
+      time: "2026-10-26 09:40", amount: "EUR 110.00", status: "Pending Tax" },
+    { order_id: "ORD-1007", merchant: "Hunter Home Decor", product: "Ceramic Vase Set",
+      time: "2026-10-22 14:05", amount: "USD 42.99", status: "Not Shipped" },
+    { order_id: "ORD-1006", merchant: "Sunrise Audio", product: "Wireless Earbuds Pro",
+      time: "2026-10-18 11:32", amount: "CNY 268.00", status: "Signed" }
+  ];
+
+  var TAB_HEAD = {
+    order:    ["Order ID", "Merchant", "Product", "Time", "Amount", "Status", "Action"],
+    merchant: ["Merchant", "Orders", "Latest Order", "Amount", "Status", "Action"],
+    product:  ["Product", "Merchant", "Orders", "Latest Order", "Amount", "Action"]
+  };
+
+  var state = { tab: "order", keyword: "", from: "", to: "" };
+  var tbody = document.getElementById("tbody");
+  var thead = document.getElementById("thead");
+  var empty = document.getElementById("empty");
+
+  function match(o) {
+    var kw = state.keyword.toLowerCase();
+    if (kw) {
+      var hit = (o.order_id + " " + o.merchant + " " + o.product).toLowerCase().indexOf(kw) >= 0;
+      if (!hit) return false;
+    }
+    var day = o.time.slice(0, 10);
+    if (state.from && day < state.from) return false;
+    if (state.to && day > state.to) return false;
+    return true;
+  }
+
+  function badge(status) {
+    return '<span class="badge">' + status + "</span>";
+  }
+
+  function render() {
+    var rows = ORDERS.filter(match);
+    var head = TAB_HEAD[state.tab];
+    thead.innerHTML = "<tr>" + head.map(function (h) { return "<th>" + h + "</th>"; }).join("") + "</tr>";
+
+    if (!rows.length) {
+      tbody.innerHTML = "";
+      empty.style.display = "block";
+      return;
+    }
+    empty.style.display = "none";
+
+    if (state.tab === "order") {
+      tbody.innerHTML = rows.map(function (o) {
+        return "<tr>" +
+          '<td class="oid">' + o.order_id + "</td>" +
+          "<td>" + o.merchant + "</td>" +
+          "<td>" + o.product + "</td>" +
+          "<td>" + o.time + "</td>" +
+          '<td class="amount">' + o.amount + "</td>" +
+          "<td>" + badge(o.status) + "</td>" +
+          '<td><button class="linkbtn" data-oid="' + o.order_id + '">View Detail</button></td>' +
+        "</tr>";
+      }).join("");
+    } else if (state.tab === "merchant") {
+      var names = [];
+      rows.forEach(function (o) { if (names.indexOf(o.merchant) < 0) names.push(o.merchant); });
+      tbody.innerHTML = names.map(function (n) {
+        var list = rows.filter(function (o) { return o.merchant === n; });
+        var first = list[0];
+        return "<tr>" +
+          "<td>" + n + "</td>" +
+          "<td>" + list.length + "</td>" +
+          "<td>" + first.order_id + "</td>" +
+          '<td class="amount">' + first.amount + "</td>" +
+          "<td>" + badge(first.status) + "</td>" +
+          '<td><button class="linkbtn" data-oid="' + first.order_id + '">View Detail</button></td>' +
+        "</tr>";
+      }).join("");
+    } else {
+      var prods = [];
+      rows.forEach(function (o) { if (prods.indexOf(o.product) < 0) prods.push(o.product); });
+      tbody.innerHTML = prods.map(function (p) {
+        var list = rows.filter(function (o) { return o.product === p; });
+        var first = list[0];
+        return "<tr>" +
+          "<td>" + p + "</td>" +
+          "<td>" + first.merchant + "</td>" +
+          "<td>" + list.length + "</td>" +
+          "<td>" + first.order_id + "</td>" +
+          '<td class="amount">' + first.amount + "</td>" +
+          '<td><button class="linkbtn" data-oid="' + first.order_id + '">View Detail</button></td>' +
+        "</tr>";
+      }).join("");
+    }
+  }
+
+  document.querySelectorAll(".tab").forEach(function (t) {
+    t.addEventListener("click", function () {
+      document.querySelectorAll(".tab").forEach(function (x) { x.classList.remove("active"); });
+      t.classList.add("active");
+      state.tab = t.getAttribute("data-tab");
+      render();
+    });
+  });
+
+  document.getElementById("btnSearch").addEventListener("click", function () {
+    state.keyword = document.getElementById("q").value.trim();
+    state.from = document.getElementById("d1").value;
+    state.to = document.getElementById("d2").value;
+    render();
+  });
+
+  document.getElementById("q").addEventListener("keydown", function (e) {
+    if (e.key === "Enter") document.getElementById("btnSearch").click();
+  });
+
+  document.getElementById("btnReset").addEventListener("click", function () {
+    document.getElementById("q").value = "";
+    document.getElementById("d1").value = "";
+    document.getElementById("d2").value = "";
+    state.keyword = ""; state.from = ""; state.to = "";
+    render();
+  });
+
+  var mask = document.getElementById("mask");
+  var dlgTitle = document.getElementById("dlgTitle");
+  var dlgBody = document.getElementById("dlgBody");
+
+  tbody.addEventListener("click", function (e) {
+    var btn = e.target.closest(".linkbtn");
+    if (!btn) return;
+    var oid = btn.getAttribute("data-oid");
+    var o = ORDERS.filter(function (x) { return x.order_id === oid; })[0];
+    if (!o) return;
+    dlgTitle.textContent = o.order_id;
+    dlgBody.innerHTML =
+      '<div class="row"><span class="k">Merchant</span><span class="v">' + o.merchant + "</span></div>" +
+      '<div class="row"><span class="k">Product</span><span class="v">' + o.product + "</span></div>" +
+      '<div class="row"><span class="k">Time</span><span class="v">' + o.time + "</span></div>" +
+      '<div class="row"><span class="k">Amount</span><span class="v">' + o.amount + "</span></div>" +
+      '<div class="row"><span class="k">Status</span><span class="v">' + o.status + "</span></div>";
+    mask.classList.add("show");
+  });
+
+  document.getElementById("dlgClose").addEventListener("click", function () {
+    mask.classList.remove("show");
+  });
+  mask.addEventListener("click", function (e) {
+    if (e.target === mask) mask.classList.remove("show");
+  });
+
+  render();
+</script>
+</body>
+</html>

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8" />
+<style>html,body{margin:0;padding:0;background:transparent;}</style>
+</head>
+<body>
+<script>
+(function () {
+  function send(type, data) {
+    window.parent.postMessage(
+      Object.assign({ isStreamlitMessage: true, type: type }, data || {}), "*"
+    );
+  }
+  send("streamlit:componentReady", { apiVersion: 1 });
+  send("streamlit:setFrameHeight", { height: 0 });
+
+  var doc = window.parent.document;
+  var BTN_ID = "cg-sidebar-pull";
+
+  function sidebarOpen() {
+    var sb = doc.querySelector('[data-testid="stSidebar"]');
+    if (!sb) return false;
+    if (sb.getAttribute("aria-expanded") === "false") return false;
+    var w = sb.getBoundingClientRect().width;
+    return w > 40;
+  }
+
+  function expandSidebar() {
+    var target =
+      doc.querySelector('[data-testid="stSidebarCollapsedControl"] button') ||
+      doc.querySelector('[data-testid="stExpandSidebarButton"]') ||
+      doc.querySelector('[data-testid="collapsedControl"] button') ||
+      doc.querySelector('[data-testid="stSidebarCollapseButton"]');
+    if (target) target.click();
+  }
+
+  function ensureButton() {
+    var btn = doc.getElementById(BTN_ID);
+    if (sidebarOpen()) {
+      if (btn) btn.style.display = "none";
+      return;
+    }
+    if (!btn) {
+      btn = doc.createElement("button");
+      btn.id = BTN_ID;
+      btn.setAttribute("aria-label", "Open navigation");
+      btn.innerHTML =
+        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+        'stroke-linecap="round" stroke-linejoin="round">' +
+        '<polyline points="6 5 13 12 6 19"/>' +
+        '<polyline points="12 5 19 12 12 19"/>' +
+        "</svg>";
+      btn.style.cssText = [
+        "position:fixed", "left:6px", "top:10px", "width:28px", "height:28px",
+        "padding:0", "border:0", "background:transparent", "color:#6b6b6b",
+        "cursor:pointer", "z-index:999998", "display:flex",
+        "align-items:center", "justify-content:center", "border-radius:6px",
+        "transition:background .15s ease,color .15s ease"
+      ].join(";");
+      btn.querySelector("svg").style.cssText = "width:20px;height:20px;display:block";
+      btn.addEventListener("mouseenter", function () {
+        btn.style.background = "#f2f4f7";
+        btn.style.color = "#333333";
+      });
+      btn.addEventListener("mouseleave", function () {
+        btn.style.background = "transparent";
+        btn.style.color = "#6b6b6b";
+      });
+      btn.addEventListener("click", expandSidebar);
+      doc.body.appendChild(btn);
+    }
+    btn.style.display = "flex";
+  }
+
+  ensureButton();
+  var obs = new MutationObserver(ensureButton);
+  obs.observe(doc.body, { attributes: true, subtree: true, attributeFilter: ["aria-expanded", "style", "class"] });
+  setInterval(ensureButton, 400);
+})();
+</script>
+</body>
+</html>
