@@ -1,4 +1,4 @@
-import re
+﻿import re
 import os
 import json
 import random
@@ -86,6 +86,18 @@ def _order_detail_component():
 order_detail_component = _order_detail_component()
 
 
+# 商家评价：原文展示 + 点击展开当前语言翻译
+@st.cache_resource
+def _merchant_reviews_component():
+    _dir = os.path.join(
+        os.path.dirname(os.path.abspath(__file__)), "components", "merchant_reviews"
+    )
+    return components.declare_component("cargoguard_merchant_reviews", path=_dir)
+
+
+merchant_reviews_component = _merchant_reviews_component()
+
+
 # 侧栏收起时的「>」拉出按钮（在父页面里创建，因此能同步侧栏开合状态）
 @st.cache_resource
 def _sidebar_toggle_component():
@@ -122,14 +134,28 @@ if not st.session_state.get("has_booted"):
         "<style>"
         ".cg-enter-input{position:fixed;width:0;height:0;opacity:0;pointer-events:none;}"
         ".cg-splash-overlay{position:fixed;inset:0;z-index:999999;background:#ffffff;"
-        "display:grid;place-items:center;cursor:pointer;"
-        "transition:opacity .32s ease-out;}"
+        "display:grid;place-items:center;cursor:pointer;touch-action:manipulation;user-select:none;"
+        "-webkit-tap-highlight-color:transparent;transition:opacity .32s ease-out;}"
         ".cg-splash-overlay svg{width:min(92vw,1040px);height:auto;display:block;}"
-        ".cg-splash-label{display:block;cursor:pointer;}"
-        ".cg-splash-hint{position:absolute;left:0;right:0;bottom:8%;text-align:center;"
-        "font-size:14px;color:#000000;letter-spacing:1px;opacity:0;"
-        "animation:cgHintIn .5s ease-out 2.6s forwards;}"
+        ".cg-splash-label{position:absolute;inset:0;display:grid;place-items:center;cursor:pointer;}"
+        ".cg-splash-hint{position:absolute;left:0;right:0;bottom:max(8%,env(safe-area-inset-bottom));"
+        "text-align:center;font-size:14px;color:#000000;letter-spacing:1px;opacity:0;"
+        "animation:cgHintIn .5s ease-out 2.6s forwards;pointer-events:none;}"
+        ".cg-splash-hint span{display:inline-block;transform-origin:center;font-weight:500;"
+        "cursor:pointer;pointer-events:auto;"
+        "transition:transform 180ms ease-out,font-weight 180ms ease-out,text-shadow 180ms ease-out;}"
+        ".cg-splash-hint span:hover{transform:scale(1.08);font-weight:600;"
+        "text-shadow:0 0 10px rgba(17,24,39,.12);}"
+        ".cg-splash-hint span:active{transform:scale(.97);font-weight:600;}"
         "@keyframes cgHintIn{to{opacity:1;}}"
+        # 点击波纹：从点击位置向外扩散的圆形转场
+        ".cg-click-ripple{position:fixed;left:0;top:0;width:0;height:0;border-radius:50%;"
+        "pointer-events:none;z-index:999998;transform:translate(-50%,-50%);"
+        "background:radial-gradient(circle,rgba(248,249,251,.98) 0%,rgba(232,234,238,.72) 38%,rgba(255,255,255,0) 72%);"
+        "box-shadow:0 0 36px 8px rgba(210,214,222,.28);}"
+        ".cg-ripple-anim{animation:cgRippleExpand .62s cubic-bezier(.2,.7,.2,1) forwards;}"
+        "@keyframes cgRippleExpand{0%{width:0;height:0;opacity:1;}"
+        "100%{width:260vmax;height:260vmax;opacity:0;}}"
         ".cg-enter-input:checked + .cg-splash-overlay{opacity:0;visibility:hidden;"
         "pointer-events:none;transition:opacity .32s ease-out,visibility 0s .32s;}"
         # 开屏期间隐藏侧栏/顶栏，避免网页内容从旁边透出
@@ -143,14 +169,53 @@ if not st.session_state.get("has_booted"):
         'body:not(:has(#cgEnter:checked)) [data-testid="stMain"]'
         "{background:#ffffff !important;}"
         'body:not(:has(#cgEnter:checked)){overflow:hidden !important;}'
+        'body:has(#cgEnter:checked) [data-testid="stMain"],'
+        'body:has(#cgEnter:checked) [data-testid="stSidebar"]'
+        "{animation:cgMainFade .42s ease-out both;}"
+        "@keyframes cgMainFade{from{opacity:0;}to{opacity:1;}}"
+        "@media(hover:none){.cg-splash-hint span:hover{transform:none;font-weight:500;}"
+        ".cg-splash-hint span:active{transform:scale(.97);font-weight:600;}}"
+        "@media(prefers-reduced-motion:reduce){"
+        ".cg-splash-overlay,.cg-splash-hint,.cg-splash-hint span{"
+        "animation:none!important;transition:none!important;}"
+        ".cg-splash-hint{opacity:1;}"
+        ".cg-splash-hint span:hover,.cg-splash-hint span:active{transform:none;font-weight:500;text-shadow:none!important;}"
+        ".cg-click-ripple{display:none!important;}"
+        'body:has(#cgEnter:checked) [data-testid="stMain"],'
+        'body:has(#cgEnter:checked) [data-testid="stSidebar"]{animation:none!important;}'
+        "}"
         "</style>"
         '<input type="checkbox" id="cgEnter" class="cg-enter-input">'
-        '<div class="cg-splash-overlay"><label for="cgEnter" class="cg-splash-label">'
+        '<div class="cg-splash-overlay"><div class="cg-splash-label">'
         + " ".join(_splash_svg.splitlines())
-        + '<div class="cg-splash-hint">Click</div>'
-        + "</label></div>"
+        + '<div class="cg-splash-hint"><span>Click</span></div>'
+        + "</div></div>"
     )
     st.markdown(_splash_html, unsafe_allow_html=True)
+    # 通过 components.html 注入可执行 JS：监听全屏点击，从点击位置扩散圆形波纹后勾选进入复选框
+    components.html(
+        "<script>"
+        "(function(){"
+        "function attach(){"
+        "var doc=parent.document,overlay=doc.querySelector('.cg-splash-overlay'),box=doc.getElementById('cgEnter');"
+        "if(!overlay||!box){setTimeout(attach,120);return;}"
+        "if(doc._cgRippleBound)return;doc._cgRippleBound=true;"
+        "var reduced=parent.matchMedia&&parent.matchMedia('(prefers-reduced-motion: reduce)').matches;"
+        "overlay.addEventListener('pointerdown',function(e){"
+        "if(box.checked)return;"
+        "var pt=e;if(e.pointerType==='touch'&&e.touches&&e.touches[0])pt=e.touches[0];"
+        "var x=pt.clientX,y=pt.clientY;"
+        "if(reduced){box.checked=true;return;}"
+        "var r=doc.createElement('div');r.className='cg-click-ripple';r.style.left=x+'px';r.style.top=y+'px';"
+        "doc.body.appendChild(r);void r.offsetWidth;r.classList.add('cg-ripple-anim');"
+        "setTimeout(function(){box.checked=true;},240);"
+        "setTimeout(function(){r.remove();},900);"
+        "},{passive:true});}"
+        "attach();"
+        "})();"
+        "</script>",
+        height=0,
+    )
     st.session_state["has_booted"] = True
 
 # =========================================================
@@ -949,6 +1014,8 @@ def load_orders():
         return list(_FALLBACK_ORDERS)
 
 orders = load_orders()
+if not st.session_state.get("is_logged_in", True):
+    orders = []
 
 # 已注销（跑路/关店）的商家：这些店铺的客服入口只显示「该账户已注销」
 CLOSED_MERCHANTS = {
@@ -1163,46 +1230,60 @@ MERCHANT_T = {
            "write": "发表评价", "placeholder": "说说你的购物体验…", "submit": "发表",
            "posted": "评价已发表，感谢你的反馈！", "report": "举报商家",
            "reason": "举报原因", "detail": "补充说明（选填）", "reportSubmit": "提交举报",
-           "reportDone": "举报已提交，平台将在 24 小时内核实处理。",
+           "reportDone": "举报已提交，平台将在 24 小时内核实处理。", "reportOkTitle": "举报成功",
            "contact": "联系商家客服", "sold": "已售", "verified": "认证商家",
            "empty": "暂无评价", "you": "我", "count": "{n} 条评价", "reviewsTitle": "评论",
            "needRating": "请选择星级并填写评价内容",
+           "translation": "翻译", "sameLang": "该评论原文即为当前语言",
+           "clickTrans": "点击查看翻译",
            "reasons": ["假冒商品", "商品与描述不符", "服务态度差", "诱导私下交易"]},
     "en": {"about": "About the store", "products": "Products in store", "reviews": "Customer reviews",
            "write": "Write a review", "placeholder": "Share your experience with this store…", "submit": "Publish",
            "posted": "Your review has been published. Thank you!", "report": "Report store",
            "reason": "Reason", "detail": "Details (optional)", "reportSubmit": "Submit report",
            "reportDone": "Report submitted. Platform support will review it within 24 hours.",
+           "reportOkTitle": "Report submitted",
            "contact": "Contact merchant support", "sold": "sold", "verified": "Verified merchant",
            "empty": "No reviews yet", "you": "You", "count": "{n} reviews", "reviewsTitle": "Reviews",
            "needRating": "Please choose a star rating and write your review.",
+           "translation": "Translation",
+           "sameLang": "This review was originally written in your current language.",
+           "clickTrans": "Click to see translation",
            "reasons": ["Counterfeit goods", "Item not as described", "Poor customer service", "Off-platform payment request"]},
     "ja": {"about": "ストア紹介", "products": "ストアの商品", "reviews": "カスタマー評価",
            "write": "評価を投稿", "placeholder": "買い物の感想を書いてください…", "submit": "投稿",
            "posted": "評価を投稿しました。ありがとうございます！", "report": "ストアを報告",
            "reason": "報告理由", "detail": "詳細（任意）", "reportSubmit": "報告を送信",
-           "reportDone": "報告を受け付けました。24時間以内に確認します。",
+           "reportDone": "報告を受け付けました。24時間以内に確認します。", "reportOkTitle": "報告を送信しました",
            "contact": "販売者サポートに連絡", "sold": "販売済み", "verified": "認証ストア",
            "empty": "評価はまだありません", "you": "自分", "count": "{n} 件の評価", "reviewsTitle": "レビュー",
            "needRating": "星の数を選び、評価内容を入力してください。",
+           "translation": "翻訳", "sameLang": "このレビューは現在の言語で書かれています。",
+           "clickTrans": "クリックで翻訳を表示",
            "reasons": ["偽造品", "説明と異なる商品", "対応が悪い", "外部取引の誘導"]},
     "ko": {"about": "스토어 소개", "products": "스토어 상품", "reviews": "고객 평가",
            "write": "평가 작성", "placeholder": "쇼핑 경험을 남겨 주세요…", "submit": "게시",
            "posted": "평가가 게시되었습니다. 감사합니다!", "report": "스토어 신고",
            "reason": "신고 사유", "detail": "상세 설명(선택)", "reportSubmit": "신고 제출",
-           "reportDone": "신고가 접수되었습니다. 24시간 내에 확인됩니다.",
+           "reportDone": "신고가 접수되었습니다. 24시간 내에 확인됩니다.", "reportOkTitle": "신고 접수 완료",
            "contact": "판매자 고객센터", "sold": "판매", "verified": "인증 스토어",
            "empty": "아직 평가가 없습니다", "you": "나", "count": "평가 {n}개", "reviewsTitle": "리뷰",
            "needRating": "별점을 선택하고 평가 내용을 입력해 주세요.",
+           "translation": "번역", "sameLang": "이 리뷰는 현재 언어로 작성되었습니다.",
+           "clickTrans": "클릭하여 번역 보기",
            "reasons": ["위조 상품", "설명과 다른 상품", "불친절한 응대", "외부 거래 유도"]},
     "fr": {"about": "À propos de la boutique", "products": "Produits de la boutique", "reviews": "Avis clients",
            "write": "Rédiger un avis", "placeholder": "Partagez votre expérience…", "submit": "Publier",
            "posted": "Votre avis a été publié. Merci !", "report": "Signaler la boutique",
            "reason": "Motif", "detail": "Détails (facultatif)", "reportSubmit": "Envoyer le signalement",
            "reportDone": "Signalement envoyé. Le support examinera sous 24 heures.",
+           "reportOkTitle": "Signalement envoyé",
            "contact": "Contacter le support vendeur", "sold": "vendus", "verified": "Boutique vérifiée",
            "empty": "Aucun avis", "you": "Vous", "count": "{n} avis", "reviewsTitle": "Avis",
            "needRating": "Choisissez une note et rédigez votre avis.",
+           "translation": "Traduction",
+           "sameLang": "L'avis original est déjà dans votre langue actuelle.",
+           "clickTrans": "Cliquez pour voir la traduction",
            "reasons": ["Produits contrefaits", "Article non conforme", "Service client médiocre", "Paiement hors plateforme"]},
 }
 
@@ -1213,6 +1294,31 @@ def _ml(zh, en, ja, ko, fr):
 
 def _pick(value, lang):
     return value.get(lang, value.get("en", "")) if isinstance(value, dict) else value
+
+
+# 评价原文语言与用户所在地：原文语言按作者名确定性分配，展示"原本发的语言"
+REVIEW_ORIG_LANGS = ["en", "ja", "ko", "fr", "zh"]
+
+REVIEW_LOCATIONS = {
+    "en": _ml("伦敦，英国", "London, UK", "ロンドン、イギリス", "런던, 영국", "Londres, Royaume-Uni"),
+    "ja": _ml("东京，日本", "Tokyo, Japan", "東京、日本", "도쿄, 일본", "Tokyo, Japon"),
+    "ko": _ml("首尔，韩国", "Seoul, South Korea", "ソウル、韓国", "서울, 대한민국", "Séoul, Corée du Sud"),
+    "fr": _ml("巴黎，法国", "Paris, France", "パリ、フランス", "파리, 프랑스", "Paris, France"),
+    "zh": _ml("广州，中国", "Guangzhou, China", "広州、中国", "광저우, 중국", "Canton, Chine"),
+}
+
+REVIEW_LANG_NAMES = {
+    "en": _ml("英语", "English", "英語", "영어", "anglais"),
+    "ja": _ml("日语", "Japanese", "日本語", "일본어", "japonais"),
+    "ko": _ml("韩语", "Korean", "韓国語", "한국어", "coréen"),
+    "fr": _ml("法语", "French", "フランス語", "프랑스어", "français"),
+    "zh": _ml("中文", "Chinese", "中国語", "중국어", "chinois"),
+}
+
+
+def review_origin(author: str) -> str:
+    """按作者名确定性分配原文语言，保证同一评论每次显示一致。"""
+    return REVIEW_ORIG_LANGS[sum(ord(ch) for ch in str(author)) % len(REVIEW_ORIG_LANGS)]
 
 
 MERCHANT_PROFILES = {
@@ -2518,9 +2624,9 @@ def render_chat_composer(page_key="ai"):
         "padding-left:8px !important;padding-right:8px !important;max-width:100% !important;}"
         "[data-testid='stMain'] .block-container > [data-testid='stVerticalBlock']{"
         "padding-bottom:8px !important;}"
-        ".cg-chat-scroll{height:calc(100vh - 330px);min-height:80px;"
+        ".cg-chat-scroll{height:var(--cg-chat-height,calc(100vh - 330px));min-height:80px;"
         "overflow-y:auto;box-sizing:border-box;padding:4px 6px 10px 2px;}"
-        ".cg-empty-fill{height:calc(100vh - 330px);min-height:80px;"
+        ".cg-empty-fill{height:var(--cg-chat-height,calc(100vh - 330px));min-height:80px;"
         "box-sizing:border-box;}"
         "</style>",
         unsafe_allow_html=True,
@@ -2774,26 +2880,36 @@ st.markdown("""
         display: none !important;
     }
 
-    /* 发送等主按钮：亮色/深色主题下都保持灰底 + 白字 */
+    /* 发送等主按钮：浅灰底 + 深字，亮色/深色主题下对比度一致 */
     .stButton > button,
-    .stButton > button:hover,
     .stButton > button:focus,
     .stButton > button:focus-visible,
-    .stButton > button:active,
     .stButton > button:disabled,
     .stButton > button[disabled] {
         width: 100%;
         border-radius: 12px;
-        color: #ffffff !important;
-        -webkit-text-fill-color: #ffffff !important;
-        background-color: #4b5563 !important;
+        color: #111827 !important;
+        -webkit-text-fill-color: #111827 !important;
+        background-color: #e5e7eb !important;
         background-image: none !important;
-        border: 1px solid transparent !important;
+        border: 1px solid #d1d5db !important;
         font-weight: 800;
         min-height: 40px;
         font-size: 0.95rem !important;
         box-shadow: none !important;
         opacity: 1 !important;
+    }
+
+    .stButton > button:hover {
+        color: #111827 !important;
+        -webkit-text-fill-color: #111827 !important;
+        background-color: #dfe3e9 !important;
+        border-color: #c9cfd8 !important;
+    }
+
+    .stButton > button:active {
+        background-color: #d5dae1 !important;
+        border-color: #c0c7d1 !important;
     }
 
     /* 「+」/表情按钮：亮色与深色主题下都强制白底浅灰边、深色图标 */
@@ -3092,6 +3208,50 @@ st.markdown("""
     .st-key-cg_new_btn:hover::after {
         opacity: 1;
     }
+
+    /* ===== 统一按压反馈：hover 上浮 + 阴影加深，active 缩放到 0.97 ===== */
+    button,
+    [role="button"],
+    [data-baseweb="select"] > div,
+    [data-testid="stPopoverButton"] {
+        transition: transform 140ms ease-out, box-shadow 140ms ease-out,
+                    background-color 140ms ease-out, border-color 140ms ease-out !important;
+        -webkit-tap-highlight-color: transparent;
+        touch-action: manipulation;
+    }
+
+    @media (hover: hover) and (pointer: fine) {
+        button:not(:disabled):not([disabled]):not([aria-disabled="true"]):hover,
+        [role="button"]:not([aria-disabled="true"]):hover,
+        [data-baseweb="select"] > div:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 6px 16px rgba(17, 24, 39, 0.14) !important;
+        }
+    }
+
+    button:not(:disabled):not([disabled]):not([aria-disabled="true"]):active,
+    [role="button"]:not([aria-disabled="true"]):active,
+    [data-baseweb="select"] > div:active {
+        transform: scale(0.97);
+        box-shadow: 0 2px 6px rgba(17, 24, 39, 0.12) !important;
+    }
+
+    button:disabled,
+    button[disabled],
+    [aria-disabled="true"] {
+        transform: none !important;
+        box-shadow: none !important;
+    }
+
+    /* 触屏设备：取消 hover 上浮，避免按压后高亮粘滞 */
+    @media (hover: none) {
+        button:hover,
+        [role="button"]:hover,
+        [data-baseweb="select"] > div:hover {
+            transform: none;
+            box-shadow: none !important;
+        }
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -3106,6 +3266,8 @@ lang_labels = {
     "ko": "한국어",
     "fr": "Français",
 }
+# 各界面语言的全称（用于用户菜单语言行等需要完整语言名的展示）
+LANG_NAMES = {"en": "English", "zh": "简体中文", "ja": "日本語", "ko": "한국어", "fr": "français"}
 
 # =========================================================
 # 左侧导航（客服三类 + 订单 + 汇率）
@@ -3169,14 +3331,6 @@ with st.sidebar:
         f"padding:6px 2px 14px 2px;'>{T[st.session_state.lang]['brand']}</div>",
         unsafe_allow_html=True,
     )
-    st.selectbox(
-        "Language",
-        options=lang_options,
-        index=lang_options.index(st.session_state.lang),
-        format_func=lambda x: lang_labels[x],
-        key="lang",
-        label_visibility="collapsed",
-    )
     _active_page = PAGE_ALIAS.get(st.session_state.page, st.session_state.page)
     if _active_page not in NAV_PAGES:
         _active_page = "ai"
@@ -3189,7 +3343,133 @@ with st.sidebar:
         key="cg_nav",
     )
 
-if isinstance(_selected_page, dict) and _selected_page.get("seq"):
+    _account_pack = {
+        "en": {"manage": "Manage account", "language": "Language", "mode": "Language mode", "logout": "Sign out of this account", "login": "Sign in", "guest": "Not signed in"},
+        "zh": {"manage": "管理账号", "language": "语言", "mode": "语言模式", "logout": "退出该账户", "login": "登录该账户", "guest": "未登录"},
+        "ja": {"manage": "アカウント管理", "language": "言語", "mode": "言語モード", "logout": "このアカウントからログアウト", "login": "ログイン", "guest": "未ログイン"},
+        "ko": {"manage": "계정 관리", "language": "언어", "mode": "언어 모드", "logout": "이 계정에서 로그아웃", "login": "로그인", "guest": "로그인하지 않음"},
+        "fr": {"manage": "Gérer le compte", "language": "Langue", "mode": "Mode de langue", "logout": "Se déconnecter de ce compte", "login": "Se connecter", "guest": "Non connecté"},
+    }[st.session_state.lang]
+    _is_logged_in = st.session_state.get("is_logged_in", True)
+    _display_name = "it's me" if _is_logged_in else _account_pack["guest"]
+    with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "cinnamoroll_avatar.jpg"), "rb") as _avatar_file:
+        _account_avatar = "data:image/jpeg;base64," + base64.b64encode(_avatar_file.read()).decode()
+    if not _is_logged_in:
+        with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "ocean_guest_avatar.jpg"), "rb") as _avatar_file:
+            _account_avatar = "data:image/jpeg;base64," + base64.b64encode(_avatar_file.read()).decode()
+    st.markdown(
+        "<style>"
+        "[data-testid='stSidebarContent']{padding-bottom:86px !important;}"
+        "[data-testid='stSidebar'] .st-key-cg_user_menu{position:fixed;left:30px;bottom:14px;"
+        "width:240px;margin:0 !important;padding:0 !important;z-index:20;}"
+        "[data-testid='stSidebar'][aria-expanded='false'] .st-key-cg_user_menu{display:none !important;}"
+        ".st-key-cg_user_menu [data-testid='stPopover'] > div > button{width:100% !important;"
+        "min-height:54px !important;height:54px !important;padding:8px 10px !important;"
+        "display:flex !important;align-items:center !important;justify-content:flex-start !important;"
+        "gap:10px !important;border:1px solid transparent !important;border-radius:12px !important;"
+        "background:transparent !important;color:#111111 !important;"
+        "transition:transform 140ms ease-out,box-shadow 140ms ease-out,background-color 140ms ease-out !important;"
+        "-webkit-tap-highlight-color:transparent;touch-action:manipulation;}"
+        ".st-key-cg_user_menu [data-testid='stPopover'] > div > button::before{content:'';"
+        "width:34px;height:34px;flex:0 0 34px;border-radius:10px;border:1px solid #e5e7eb;"
+        f"background:url(\"{_account_avatar}\") center/cover no-repeat #ffffff;"
+        "box-shadow:0 1px 2px rgba(17,24,39,.06);}"
+        ".st-key-cg_user_menu [data-testid='stPopover'] > div > button p{font-size:14px !important;"
+        "font-weight:500 !important;color:#111111 !important;margin:0 !important;}"
+        ".st-key-cg_user_menu [data-testid='stPopover'] > div > button svg{display:none !important;}"
+        "@media(hover:hover) and (pointer:fine){"
+        ".st-key-cg_user_menu [data-testid='stPopover'] > div > button:hover{background:#e6e9ee !important;"
+        "transform:translateY(-1px);box-shadow:0 4px 12px rgba(17,24,39,.08) !important;}}"
+        ".st-key-cg_user_menu [data-testid='stPopover'] > div > button:active{transform:scale(.98);}"
+        "@media(hover:none){.st-key-cg_user_menu [data-testid='stPopover'] > div > button:hover{"
+        "transform:none;box-shadow:none !important;}}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker){min-width:280px !important;padding:6px !important;}"
+        # 无边框列表行（图1风格）：expander 的边框在 details 上，一并去掉
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stExpander'],"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) details{"
+        "border:0 !important;background:transparent !important;box-shadow:none !important;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) summary{"
+        "border-radius:10px;padding:10px 12px !important;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) summary:hover{background:#f2f4f7;}"
+        # 管理账号行：箭头移到最右，标签居左
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) summary > span{"
+        "display:flex !important;align-items:center !important;width:100% !important;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) summary > span > span{order:2;margin-left:auto;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) summary > span > div{order:1;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) summary [data-testid='stMarkdownContainer'] p{"
+        "display:flex;align-items:center;gap:9px;font-size:14px !important;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) summary [data-testid='stMarkdownContainer'] p::before{"
+        "content:'';width:18px;height:18px;flex:0 0 18px;background:no-repeat center/contain "
+        "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='8' r='3.4'/><path d='M5 20c1.4-3.6 4-5.2 7-5.2s5.6 1.6 7 5.2'/></svg>\");}"
+        # 语言行（selectbox）：label 左、当前语言值右，去输入框边框
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stSelectbox']{"
+        "display:flex !important;align-items:center !important;justify-content:space-between !important;"
+        "gap:8px;padding:10px 12px;border-radius:10px;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stSelectbox']:hover{background:#f2f4f7;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stSelectbox'] > label{margin:0 !important;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stSelectbox'] > label p{"
+        "display:flex;align-items:center;gap:9px;font-size:14px !important;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stSelectbox'] > label p::before{"
+        "content:'';width:18px;height:18px;flex:0 0 18px;background:no-repeat center/contain "
+        "url(\"data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23374151' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><circle cx='12' cy='12' r='8.4'/><path d='M3.6 12h16.8M12 3.6c3.2 3.6 3.2 13.2 0 16.8M12 3.6c-3.2 3.6-3.2 13.2 0 16.8'/></svg>\");}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stSelectbox'] .react-aria-ComboBox{flex:0 0 auto;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stSelectbox'] [role='group']{"
+        "border:0 !important;background:transparent !important;box-shadow:none !important;"
+        "padding:0 !important;min-height:0 !important;gap:4px !important;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stSelectbox'] input{"
+        "border:0 !important;background:transparent !important;box-shadow:none !important;"
+        "text-align:right;font-size:14px !important;color:#6b7280 !important;padding:0 !important;width:auto !important;flex:0 0 auto !important;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stSelectbox'] input:focus{outline:none !important;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stSelectbox'] [role='group'] button{"
+        "display:inline-flex !important;align-items:center !important;justify-content:center !important;"
+        "width:20px !important;min-width:20px !important;height:20px !important;"
+        "color:#6b7280 !important;padding:0 !important;border:0 !important;background:transparent !important;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stSelectbox'] [role='group'] button svg{display:none !important;}"
+        "[data-testid='stPopoverBody']:has(.cg-account-menu-marker) [data-testid='stSelectbox'] [role='group'] button::after{"
+        "content:'';width:6px;height:6px;border-top:1.5px solid #6b7280;border-right:1.5px solid #6b7280;"
+        "transform:rotate(45deg);margin-left:-2px;}"
+        "@media(prefers-reduced-motion:reduce){"
+        ".st-key-cg_user_menu [data-testid='stPopover'] > div > button{transition:none !important;}"
+        ".st-key-cg_user_menu [data-testid='stPopover'] > div > button:hover,"
+        ".st-key-cg_user_menu [data-testid='stPopover'] > div > button:active{transform:none !important;}}"
+        "</style>",
+        unsafe_allow_html=True,
+    )
+    with st.container(key="cg_user_menu"):
+        with st.popover(_display_name, use_container_width=True):
+            st.markdown('<div class="cg-account-menu-marker"></div>', unsafe_allow_html=True)
+            with st.expander(_account_pack["manage"], expanded=False):
+                st.markdown(
+                    "<div style='display:flex;align-items:center;gap:12px;padding:8px 4px 12px;'>"
+                    f"<img class='cg-account-avatar' src='{html.escape(_account_avatar, quote=True)}' "
+                    f"alt='{html.escape(_display_name, quote=True)}' "
+                    "style='width:52px;height:52px;flex:0 0 52px;border-radius:12px;object-fit:cover;"
+                    "border:1px solid #e5e7eb;box-shadow:0 1px 2px rgba(17,24,39,.06);'>"
+                    "<div style='min-width:0;'>"
+                    f"<div style='font-size:14px;font-weight:600;color:#111827;'>{html.escape(_display_name)}</div>"
+                    "<div style='font-size:12px;color:#6b7280;margin-top:3px;'>CargoGuard Lite</div>"
+                    "</div></div>",
+                    unsafe_allow_html=True,
+                )
+                if st.button(
+                    _account_pack["logout"] if _is_logged_in else _account_pack["login"],
+                    key="cg_account_auth",
+                    use_container_width=True,
+                ):
+                    st.session_state.is_logged_in = not _is_logged_in
+                    st.session_state.page = "ai"
+                    st.session_state.page_stack = []
+                    st.session_state["last_order_id"] = ""
+                    st.rerun()
+            st.selectbox(
+                _account_pack["language"],
+                options=lang_options,
+                index=lang_options.index(st.session_state.lang),
+                format_func=lambda x: LANG_NAMES[x],
+                key="lang",
+            )
+
+if isinstance(_selected_page, dict) and _selected_page.get("seq"): 
     # 组件回传的是 {page, seq}，只有新点击（seq 变化）才切页，
     # 避免旧值在 rerun 时把页面强制拉回导航页
     _nav_seq = _selected_page.get("seq")
@@ -3221,7 +3501,6 @@ if st.session_state.pop("cg_page_fade", False):
 # =========================================================
 # AI 客服：CargoGuard 买家维权参谋
 # =========================================================
-LANG_NAMES = {"en": "English", "zh": "简体中文", "ja": "日本語", "ko": "한국어", "fr": "français"}
 
 
 def country_code_from_address(address):
@@ -3359,7 +3638,7 @@ def order_card_html(order):
             '<details style="margin-top:12px;">'
             '<summary style="list-style:none;cursor:pointer;display:flex;'
             'justify-content:flex-end;align-items:center;gap:6px;">'
-            f'{badge_html}<span style="font-size:0.7rem;color:#000000;">▾</span></summary>'
+            f'{badge_html}</summary>'
             '<div style="margin-top:10px;border-left:2px solid #e5e7eb;padding-left:12px;">'
             f'<div style="font-size:0.7rem;color:#000000;margin-bottom:8px;">{lang_pack["timeline_title"]}</div>'
             + "".join(nodes) + '</div></details>'
@@ -3693,8 +3972,9 @@ def render_logistics(order):
 
     page_html = (
         "<style>"
-        ".cg-log{max-width:820px;}"
-        ".cg-log-head{font-size:1.25rem;font-weight:800;color:#111111;margin:2px 0 12px;}"
+        ".cg-log{max-width:820px;position:relative;}"
+        ".cg-log-head{position:absolute;top:-44px;left:44px;height:34px;display:flex;"
+        "align-items:center;font-size:1.15rem;font-weight:800;color:#111111;margin:0;}"
         ".cg-log-card{background:#ffffff;border:1px solid #ececec;border-radius:16px;"
         "padding:16px 18px;margin-bottom:12px;}"
         ".cg-log-status{display:flex;align-items:center;gap:9px;font-size:1.15rem;"
@@ -3756,11 +4036,33 @@ def render_merchant_store(merchant):
     reviews = user_reviews + [
         {"author": item["author"], "rating": item["rating"],
          "date": (datetime.now() - timedelta(days=item["days"])).strftime("%Y-%m-%d"),
-         "text": _pick(item["text"], lang)}
+         "text": item["text"]}
         for item in profile["reviews"]
     ]
     count = len(reviews)
     avg = sum(item["rating"] for item in reviews) / count if count else 0.0
+
+    # 评论原文保持发布语言；点击后由组件在上方展示当前语言翻译
+    review_payload = []
+    for item in reviews:
+        text_ml = item["text"]
+        if isinstance(text_ml, dict):
+            origin = review_origin(item["author"])
+            text = _pick(text_ml, origin)
+            trans = _pick(text_ml, lang)
+        else:
+            origin = lang
+            text = text_ml
+            trans = text_ml
+        review_payload.append({
+            "author": item["author"],
+            "rating": item["rating"],
+            "date": item["date"],
+            "location": _pick(REVIEW_LOCATIONS[origin], lang),
+            "text": text,
+            "trans": "" if origin == lang else trans,
+            "langLabel": _pick(REVIEW_LANG_NAMES[origin], lang),
+        })
 
     tag_html = "".join(
         f'<span class="cg-ms-tag">{html.escape(_pick(tag, lang))}</span>'
@@ -3778,25 +4080,10 @@ def render_merchant_store(merchant):
         )
     )
 
-    if reviews:
-        review_html = "".join(
-            '<div class="cg-ms-review">'
-            f'<div class="cg-ms-r-avatar">{html.escape(item["author"][:1].upper())}</div>'
-            '<div class="cg-ms-r-main">'
-            '<div class="cg-ms-r-top">'
-            f'<span class="cg-ms-r-name">{html.escape(item["author"])}</span>'
-            + f'<span class="cg-ms-r-date">{html.escape(item["date"])}</span></div>'
-            f'<div class="cg-ms-r-stars">{merchant_stars(item["rating"])}</div>'
-            f'<div class="cg-ms-r-text">{html.escape(item["text"])}</div>'
-            "</div></div>"
-            for item in reviews
-        )
-    else:
-        review_html = f'<div class="cg-ms-empty">{html.escape(pack["empty"])}</div>'
-
     page_html = (
         "<style>"
-        ".cg-ms{max-width:none;}"
+        # 防止客服聊天区的内联高度随 React DOM 复用残留到商家主页
+        ".cg-ms{max-width:none;height:auto !important;}"
         ".cg-ms-card{background:#ffffff;border:1px solid #ececec;border-radius:16px;"
         "padding:16px 18px;margin-bottom:12px;}"
         ".cg-ms-head{display:flex;gap:14px;align-items:flex-start;}"
@@ -3844,21 +4131,36 @@ def render_merchant_store(merchant):
         "background:#ffffff !important;border:1px solid #ececec !important;"
         "border-radius:16px !important;padding:6px 18px 16px !important;"
         "margin-bottom:12px;}"
-        # 举报 / 联系商家客服：红色按钮
+        # 举报 / 联系商家客服：浅灰色按钮
         "div[data-testid='stHorizontalBlock']:has([data-testid='stPopoverButton'])"
         " [data-testid='stPopoverButton'],"
         "div[data-testid='stHorizontalBlock']:has([data-testid='stPopoverButton'])"
         " .stButton > button{"
-        "background:#dc2626 !important;background-image:none !important;"
-        "border:1px solid #dc2626 !important;color:#ffffff !important;"
-        "-webkit-text-fill-color:#ffffff !important;height:38px !important;"
+        "background:#f3f4f6 !important;background-image:none !important;"
+        "border:1px solid #e5e7eb !important;color:#374151 !important;"
+        "-webkit-text-fill-color:#374151 !important;height:38px !important;"
         "min-height:38px !important;border-radius:10px !important;"
         "font-weight:700;}"
         "div[data-testid='stHorizontalBlock']:has([data-testid='stPopoverButton'])"
         " [data-testid='stPopoverButton']:hover,"
         "div[data-testid='stHorizontalBlock']:has([data-testid='stPopoverButton'])"
         " .stButton > button:hover{"
-        "background:#b91c1c !important;border-color:#b91c1c !important;}"
+        "background:#e9eaec !important;border-color:#dcdddf !important;"
+        "color:#374151 !important;-webkit-text-fill-color:#374151 !important;}"
+        # 发表评价按钮（primary 深灰）改为浅灰
+        "div[data-testid='stLayoutWrapper']:has([data-testid='stFeedback'])"
+        " .stButton > button{"
+        "background:#f3f4f6 !important;background-image:none !important;"
+        "border:1px solid #e5e7eb !important;color:#374151 !important;"
+        "-webkit-text-fill-color:#374151 !important;font-weight:700;}"
+        "div[data-testid='stLayoutWrapper']:has([data-testid='stFeedback'])"
+        " .stButton > button:hover{"
+        "background:#e9eaec !important;border-color:#dcdddf !important;"
+        "color:#374151 !important;-webkit-text-fill-color:#374151 !important;}"
+        # 评论区容器：与商家卡片保持一致的圆角与内边距
+        "div[data-testid='stVerticalBlockBorderWrapper']:has(iframe[title*='merchant_reviews']){"
+        "border:1px solid #ececec !important;border-radius:16px !important;"
+        "background:#ffffff !important;padding:16px 18px !important;margin-bottom:12px;}"
         "</style>"
         '<div class="cg-ms">'
         '<div class="cg-ms-card cg-ms-head">'
@@ -3880,14 +4182,28 @@ def render_merchant_store(merchant):
         f'<div class="cg-ms-sec">{html.escape(pack["products"])}</div>'
         f'<div class="cg-ms-grid">{product_html}</div>'
         "</div>"
-        '<div class="cg-ms-card">'
-        f'<div class="cg-ms-sec">{html.escape(pack["reviewsTitle"])}'
-        f'<span class="cg-ms-star" style="margin-left:8px">{avg:.1f}</span></div>'
-        f"{review_html}"
-        "</div>"
         "</div>"
     )
     st.markdown(page_html, unsafe_allow_html=True)
+
+    # 评论区：原文 + 点击在上方展开当前语言翻译
+    with st.container(border=True):
+        st.markdown(
+            f'<div class="cg-ms-sec">{html.escape(pack["reviewsTitle"])}'
+            f'<span class="cg-ms-star" style="margin-left:8px">{avg:.1f}</span></div>',
+            unsafe_allow_html=True,
+        )
+        merchant_reviews_component(
+            reviews=review_payload,
+            labels={
+                "translation": pack["translation"],
+                "sameLang": pack["sameLang"],
+                "click": pack["clickTrans"],
+                "empty": pack["empty"],
+            },
+            key=f"cg_reviews_{merchant}",
+            default=None,
+        )
 
     with st.container(border=True):
         st.markdown(f'<div class="cg-ms-sec">{html.escape(pack["write"])}</div>',
@@ -3914,13 +4230,19 @@ def render_merchant_store(merchant):
     with st.container():
         col_report, col_contact = st.columns(2)
         with col_report:
-            with st.popover(pack["report"], use_container_width=True):
-                st.radio(pack["reason"], pack["reasons"], key=f"cg_ms_reason_{merchant}")
-                st.text_area(pack["detail"], key=f"cg_ms_report_{merchant}", height=80)
-                if st.button(pack["reportSubmit"], key=f"cg_ms_report_btn_{merchant}",
-                             type="primary", use_container_width=True):
-                    st.session_state["cg_ms_report_ok"] = True
-                    st.rerun()
+            # 提交后重新挂载一个关闭的 popover：表单消失，但举报按钮始终保留
+            report_version = st.session_state.get("cg_ms_report_version", 0)
+            with st.container(key=f"cg_ms_report_pop_{merchant}_{report_version}"):
+                with st.popover(pack["report"], use_container_width=True):
+                    # 用 form 包裹：选择原因/填写说明不触发 rerun，popover 不再闪退
+                    with st.form(key=f"cg_ms_report_form_{merchant}", border=False):
+                        st.radio(pack["reason"], pack["reasons"], key=f"cg_ms_reason_{merchant}")
+                        st.text_area(pack["detail"], key=f"cg_ms_report_{merchant}", height=80)
+                        if st.form_submit_button(pack["reportSubmit"], type="primary",
+                                                 use_container_width=True):
+                            st.session_state["cg_ms_report_version"] = report_version + 1
+                            st.session_state["cg_ms_report_ok"] = True
+                            st.rerun()
         with col_contact:
             if st.button(pack["contact"], key=f"cg_ms_contact_{merchant}",
                          use_container_width=True):
@@ -3929,7 +4251,55 @@ def render_merchant_store(merchant):
                 st.rerun()
 
     if st.session_state.pop("cg_ms_report_ok", False):
-        st.success(pack["reportDone"])
+        # 居中成功弹窗：淡入 → 3 秒后自动淡出；点击遮罩立即关闭（纯 CSS，无脚本依赖）
+        # 每次用唯一 id/key，避免 React 复用旧 DOM 导致动画不重播
+        uid = datetime.now().strftime("%H%M%S%f")
+        with st.container(key=f"cg_rp_modal_{uid}"):
+            st.markdown(
+            "<style>"
+            ".cg-rp-close{position:fixed;width:0;height:0;opacity:0;pointer-events:none;}"
+            ".cg-rp-overlay{position:fixed;inset:0;z-index:999999;display:grid;place-items:center;"
+            "animation:cgRpFadeIn .25s ease-out,cgRpFadeOut .35s ease-in 3s forwards;}"
+            ".cg-rp-backdrop{position:absolute;inset:0;background:rgba(17,24,39,.45);cursor:pointer;}"
+            ".cg-rp-modal{position:relative;background:#ffffff;border-radius:18px;padding:30px 42px;"
+            "text-align:center;min-width:260px;box-shadow:0 20px 60px rgba(17,24,39,.20);"
+            "animation:cgRpPop .3s ease-out;}"
+            ".cg-rp-count{position:absolute;top:11px;right:13px;width:18px;height:18px;"
+            "color:#9ca3af;font-size:12px;line-height:18px;font-weight:600;text-align:center;"
+            "font-variant-numeric:tabular-nums;}"
+            ".cg-rp-count span{position:absolute;inset:0;opacity:0;}"
+            ".cg-rp-count span:nth-child(1){animation:cgRpCount3 3s linear forwards;}"
+            ".cg-rp-count span:nth-child(2){animation:cgRpCount2 3s linear forwards;}"
+            ".cg-rp-count span:nth-child(3){animation:cgRpCount1 3s linear forwards;}"
+            ".cg-rp-icon{width:52px;height:52px;margin:0 auto 14px;border-radius:50%;background:#eaf6ef;"
+            "display:flex;align-items:center;justify-content:center;}"
+            ".cg-rp-icon svg{width:26px;height:26px;color:#2f9e5f;}"
+            ".cg-rp-title{font-size:1.05rem;font-weight:800;color:#111827;margin-bottom:8px;}"
+            ".cg-rp-desc{font-size:0.82rem;color:#6b7280;line-height:1.7;}"
+            ".cg-rp-close:checked~.cg-rp-overlay{opacity:0;visibility:hidden;pointer-events:none;"
+            "transition:opacity .25s ease-out,visibility 0s .25s;}"
+            "@keyframes cgRpFadeIn{from{opacity:0;}to{opacity:1;}}"
+            "@keyframes cgRpFadeOut{to{opacity:0;visibility:hidden;pointer-events:none;}}"
+            "@keyframes cgRpPop{from{opacity:0;transform:translateY(12px) scale(.96);}"
+            "to{opacity:1;transform:translateY(0) scale(1);}}"
+            "@keyframes cgRpCount3{0%,33.32%{opacity:1;}33.33%,100%{opacity:0;}}"
+            "@keyframes cgRpCount2{0%,33.32%{opacity:0;}33.33%,66.65%{opacity:1;}"
+            "66.66%,100%{opacity:0;}}"
+            "@keyframes cgRpCount1{0%,66.65%{opacity:0;}66.66%,100%{opacity:1;}}"
+            "</style>"
+            f'<input type="checkbox" id="cgRpClose{uid}" class="cg-rp-close">'
+            '<div class="cg-rp-overlay">'
+            f'<label for="cgRpClose{uid}" class="cg-rp-backdrop" aria-label="Close"></label>'
+            '<div class="cg-rp-modal" role="alertdialog">'
+            '<div class="cg-rp-count" aria-hidden="true"><span>3</span><span>2</span><span>1</span></div>'
+            '<div class="cg-rp-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+            'stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">'
+            '<polyline points="4 12.5 9.5 18 20 6"/></svg></div>'
+            f'<div class="cg-rp-title">{html.escape(pack["reportOkTitle"])}</div>'
+            f'<div class="cg-rp-desc">{html.escape(pack["reportDone"])}</div>'
+            "</div></div>",
+            unsafe_allow_html=True,
+            )
 
 
 def render_product_detail(order):
@@ -3984,6 +4354,103 @@ def render_product_detail(order):
         unsafe_allow_html=True,
     )
 
+    # 商品评论区：与商家详情一致（原文展示 + 点击查看当前语言翻译 + 发表评价）
+    lang = st.session_state.lang
+    pack = MERCHANT_T.get(lang, MERCHANT_T["en"])
+    profile = merchant_profile(order.get("merchant") or "")
+    pool = profile.get("reviews") or []
+    item_key = f'{order.get("order_id") or ""}_{order.get("product_name") or ""}'
+    store = st.session_state.setdefault("cg_product_reviews", {})
+    user_reviews = store.setdefault(item_key, [])
+
+    if pool:
+        start = sum(ord(c) for c in (order.get("product_name") or "")) % len(pool)
+        rotated = pool[start:] + pool[:start]
+    else:
+        rotated = []
+    base_reviews = [
+        {"author": item["author"], "rating": item["rating"],
+         "date": (datetime.now() - timedelta(days=item["days"])).strftime("%Y-%m-%d"),
+         "text": item["text"]}
+        for item in rotated[:4]
+    ]
+    all_reviews = user_reviews + base_reviews
+    avg = sum(item["rating"] for item in all_reviews) / len(all_reviews) if all_reviews else 0.0
+
+    payload = []
+    for item in all_reviews:
+        text_ml = item["text"]
+        if isinstance(text_ml, dict):
+            origin = review_origin(item["author"])
+            text = _pick(text_ml, origin)
+            trans = _pick(text_ml, lang)
+        else:
+            origin = lang
+            text = text_ml
+            trans = text_ml
+        payload.append({
+            "author": item["author"],
+            "rating": item["rating"],
+            "date": item["date"],
+            "location": _pick(REVIEW_LOCATIONS[origin], lang),
+            "text": text,
+            "trans": "" if origin == lang else trans,
+        })
+
+    st.markdown(
+        "<style>"
+        "div[data-testid='stVerticalBlockBorderWrapper']:has(iframe[title*='merchant_reviews']){"
+        "border:1px solid #e5e7eb !important;border-radius:18px !important;"
+        "background:#ffffff !important;padding:16px 18px !important;margin-top:16px;}"
+        "</style>",
+        unsafe_allow_html=True,
+    )
+    with st.container(border=True):
+        st.markdown(
+            f'<div style="font-size:0.95rem;font-weight:800;color:#111111;margin-bottom:10px;">'
+            f'{html.escape(pack["reviewsTitle"])}'
+            f'<span style="color:#e08a3c;margin-left:8px;">{avg:.1f}</span></div>',
+            unsafe_allow_html=True,
+        )
+        merchant_reviews_component(
+            reviews=payload,
+            labels={
+                "translation": pack["translation"],
+                "sameLang": pack["sameLang"],
+                "click": pack["clickTrans"],
+                "empty": pack["empty"],
+            },
+            key=f"cg_pd_reviews_{item_key}",
+            default=None,
+        )
+
+    with st.container(border=True):
+        st.markdown(
+            f'<div style="font-size:0.95rem;font-weight:800;color:#111111;margin-bottom:10px;">'
+            f'{html.escape(pack["write"])}</div>',
+            unsafe_allow_html=True,
+        )
+        rating = st.feedback("stars", key=f"cg_pd_stars_{item_key}")
+        comment = st.text_area(
+            pack["placeholder"], placeholder=pack["placeholder"],
+            key=f"cg_pd_text_{item_key}", height=88, label_visibility="collapsed",
+        )
+        if st.button(pack["submit"], key=f"cg_pd_submit_{item_key}", type="primary"):
+            if rating is not None and comment.strip():
+                user_reviews.insert(0, {
+                    "author": pack["you"], "rating": rating + 1,
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                    "text": comment.strip(),
+                })
+                st.session_state["cg_pd_posted"] = True
+                st.rerun()
+            else:
+                st.warning(pack["needRating"])
+
+    if st.session_state.pop("cg_pd_posted", False):
+        st.success(pack["posted"])
+
+    # 风险提示固定为商品详情最后一个内容区块
     st.markdown(risk_block_html(order), unsafe_allow_html=True)
 
 
@@ -4226,33 +4693,31 @@ elif st.session_state.page == "orders":
         unsafe_allow_html=True,
     )
 
-    if not orders:
-        st.info(T[st.session_state.lang]["no_orders"])
-    else:
-        _picked = order_views_component(
-            orders=order_views_payload(orders),
-            focus=st.session_state.get("last_order_id") or "",
-            key="cg_order_views",
-            default=None,
-            height=620,
-        )
-        # 焦点只消费一次，避免后续 rerun 反复滚动
-        st.session_state["last_order_id"] = ""
-        if isinstance(_picked, dict) and _picked.get("seq"):
-            if _picked["seq"] != st.session_state.get("cg_order_views_seq"):
-                st.session_state["cg_order_views_seq"] = _picked["seq"]
-                _oid = _picked.get("order_id") or ""
-                _action = _picked.get("action")
-                if _action == "detail" and _oid:
-                    st.session_state.order_detail_id = _oid
-                    st.session_state["last_order_id"] = _oid
-                    goto("order_detail")
-                    st.rerun()
-                elif _action == "product" and _oid:
-                    st.session_state.product_detail_id = _oid
-                    st.session_state["last_order_id"] = _oid
-                    goto("product_detail")
-                    st.rerun()
+    _picked = order_views_component(
+        orders=order_views_payload(orders),
+        focus=st.session_state.get("last_order_id") or "",
+        empty_label=T[st.session_state.lang]["no_orders"],
+        key="cg_order_views",
+        default=None,
+        height=620,
+    )
+    # 焦点只消费一次，避免后续 rerun 反复滚动
+    st.session_state["last_order_id"] = ""
+    if isinstance(_picked, dict) and _picked.get("seq"):
+        if _picked["seq"] != st.session_state.get("cg_order_views_seq"):
+            st.session_state["cg_order_views_seq"] = _picked["seq"]
+            _oid = _picked.get("order_id") or ""
+            _action = _picked.get("action")
+            if _action == "detail" and _oid:
+                st.session_state.order_detail_id = _oid
+                st.session_state["last_order_id"] = _oid
+                goto("order_detail")
+                st.rerun()
+            elif _action == "product" and _oid:
+                st.session_state.product_detail_id = _oid
+                st.session_state["last_order_id"] = _oid
+                goto("product_detail")
+                st.rerun()
 
 elif st.session_state.page == "order_detail":
     render_header(ux("order_detail"), show_back=True)
@@ -4285,6 +4750,9 @@ elif st.session_state.page == "product_detail":
         "padding-left:8px !important;padding-right:8px !important;max-width:none !important;}"
         "[data-testid='stHeader'],[data-testid='stToolbar'],[data-testid='stDecoration']"
         "{display:none !important;height:0 !important;}"
+        # 返回箭头与左侧侧栏折叠按钮顶部对齐
+        "[data-testid='stMain'] [data-testid='stElementContainer']:has(iframe[title*='back_arrow'])"
+        "{margin-top:-26px !important;margin-left:2px !important;}"
         "</style>",
         unsafe_allow_html=True,
     )
@@ -4304,6 +4772,9 @@ elif st.session_state.page == "logistics":
         "padding-left:8px !important;padding-right:8px !important;max-width:none !important;}"
         "[data-testid='stHeader'],[data-testid='stToolbar'],[data-testid='stDecoration']"
         "{display:none !important;height:0 !important;}"
+        # 返回箭头与左侧侧栏折叠按钮顶部对齐
+        "[data-testid='stMain'] [data-testid='stElementContainer']:has(iframe[title*='back_arrow'])"
+        "{margin-top:-26px !important;margin-left:2px !important;}"
         "</style>",
         unsafe_allow_html=True,
     )
@@ -4324,6 +4795,11 @@ elif st.session_state.page == "merchant_store":
         "max-width:880px !important;margin:0 !important;}"
         "[data-testid='stHeader'],[data-testid='stToolbar'],[data-testid='stDecoration']"
         "{display:none !important;height:0 !important;}"
+        # 返回箭头固定在主内容区左上角（与订单详情页同一坐标，不随内容区居中偏移）
+        "[data-testid='stMain']{position:relative !important;}"
+        "[data-testid='stMain'] [data-testid='stElementContainer']:has(iframe[title*='back_arrow'])"
+        "{position:absolute !important;top:48px !important;left:10px !important;"
+        "z-index:30 !important;margin:0 !important;}"
         "</style>",
         unsafe_allow_html=True,
     )
@@ -4337,16 +4813,17 @@ elif st.session_state.page == "rate":
     render_header(T[st.session_state.lang]["rate"], show_back=True)
 
     # 下拉框与金额输入框：整个框灰色底、文字黑色；展开的选项列表保持白色
+    # 仅作用于主内容区，避免影响侧栏顶部的语言选择框
     st.markdown(
         "<style>"
-        '[data-testid="stSelectbox"] > div:last-child,'
-        '[data-testid="stNumberInput"] > div:last-child{'
+        '[data-testid="stMain"] [data-testid="stSelectbox"] > div:last-child,'
+        '[data-testid="stMain"] [data-testid="stNumberInput"] > div:last-child{'
         "background-color:#f2f4f7 !important;border-radius:10px !important;}"
-        '[data-testid="stSelectbox"] > div:last-child *,'
-        '[data-testid="stNumberInput"] > div:last-child *{'
+        '[data-testid="stMain"] [data-testid="stSelectbox"] > div:last-child *,'
+        '[data-testid="stMain"] [data-testid="stNumberInput"] > div:last-child *{'
         "background-color:transparent !important;color:#000000 !important;}"
-        '[data-testid="stSelectbox"] > div:last-child svg,'
-        '[data-testid="stNumberInput"] > div:last-child svg{'
+        '[data-testid="stMain"] [data-testid="stSelectbox"] > div:last-child svg,'
+        '[data-testid="stMain"] [data-testid="stNumberInput"] > div:last-child svg{'
         "color:#000000 !important;fill:#000000 !important;}"
         'ul[role="listbox"],div[role="listbox"],li[role="option"],'
         'ul[role="listbox"] li,div[role="listbox"] li{'

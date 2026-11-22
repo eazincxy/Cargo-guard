@@ -44,6 +44,20 @@
   .rename-input:focus { border-color: #9a9a9a; }
 
   .empty { color: #9a9a9a; font-size: 12px; padding: 6px 3px; }
+  /* 统一按压反馈：hover 上浮 + 阴影，active 缩放 */
+  .row, .more, button {
+    transition: transform 140ms ease-out, box-shadow 140ms ease-out,
+                background-color 140ms ease-out, opacity 140ms ease-out;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .row:hover { transform: translateY(-1px); }
+  }
+  button:active, .row:active { transform: scale(.97); }
+  @media (hover: none) {
+    .row:hover { transform: none; }
+  }
 </style>
 </head>
 <body>

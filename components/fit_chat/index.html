@@ -39,7 +39,11 @@
       var vh = window.parent.innerHeight;
       // 38px 为对话区与输入框之间的默认间距，另留 14px 底部间距与 2px 余量
       var h = vh - chatTop - compH - 38 - 14 - 2;
-      chat.style.height = Math.max(80, Math.round(h)) + "px";
+      // 不在聊天节点上写内联 height：React 切页复用 div 时会把旧高度带到新页面
+      chat.style.removeProperty("height");
+      doc.documentElement.style.setProperty(
+        "--cg-chat-height", Math.max(80, Math.round(h)) + "px"
+      );
     } catch (e) {}
   }
 

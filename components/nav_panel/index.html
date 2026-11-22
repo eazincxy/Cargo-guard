@@ -98,6 +98,20 @@
     font-weight: 400;
     color: #8a8a8a;
   }
+  /* 统一按压反馈：hover 上浮 + 阴影，active 缩放 */
+  .nav-item {
+    transition: transform 140ms ease-out, box-shadow 140ms ease-out,
+                background-color 140ms ease-out, border-color 140ms ease-out;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .nav-item:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(17, 24, 39, .08); }
+  }
+  .nav-item:active { transform: scale(.98); }
+  @media (hover: none) {
+    .nav-item:hover { transform: none; box-shadow: none; }
+  }
 </style>
 </head>
 <body>

@@ -37,8 +37,9 @@
 
   /* 2. 店铺行（可点击进入商家主页） */
   .shop { display: flex; align-items: center; gap: 9px; cursor: pointer; }
-  .shop-card { transition: border-color .15s ease, box-shadow .15s ease; }
-  .shop-card:hover { border-color: #dcdcdc; box-shadow: 0 2px 10px rgba(0, 0, 0, .05); }
+  .shop-card, .product-card { transition: border-color .15s ease, box-shadow .15s ease; }
+  .shop-card:hover, .product-card:hover { border-color: #dcdcdc; box-shadow: 0 2px 10px rgba(0, 0, 0, .05); }
+  .product-card { cursor: pointer; }
   .avatar { width: 26px; height: 26px; border-radius: 8px; background: #f2f2f2;
     color: #8f8f8f; font-size: 12px; font-weight: 700; flex: 0 0 26px;
     display: flex; align-items: center; justify-content: center; overflow: hidden; }
@@ -92,6 +93,31 @@
   .row:last-child { border-bottom: 0; }
   .row .k { color: #9a9a9a; white-space: nowrap; }
   .row .v { color: #3a3a3a; text-align: right; word-break: break-all; }
+
+  /* 统一按压反馈：hover 上浮 + 阴影，active 缩放，触屏不粘滞 */
+  .back, .status-card.clickable, .shop-card, .product-card, .thumb, .copy {
+    transition: transform 140ms ease-out, box-shadow 140ms ease-out,
+                border-color 140ms ease-out, color 140ms ease-out, background 140ms ease-out;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  @media (hover: hover) and (pointer: fine) {
+    .status-card.clickable:hover, .shop-card:hover, .product-card:hover, .copy:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 6px 16px rgba(17, 24, 39, .10);
+    }
+  }
+  .back:active, .status-card.clickable:active, .shop-card:active, .product-card:active,
+  .thumb:active, .copy:active {
+    transform: scale(.97);
+    box-shadow: 0 2px 6px rgba(17, 24, 39, .10);
+  }
+  .copy:disabled { transform: none; box-shadow: none; }
+  @media (hover: none) {
+    .status-card.clickable:hover, .shop-card:hover, .product-card:hover, .copy:hover {
+      transform: none; box-shadow: none;
+    }
+  }
 </style>
 </head>
 <body>
@@ -179,7 +205,7 @@
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
         'stroke-linecap="round" stroke-linejoin="round"><polyline points="15 5 8 12 15 19"/></svg>' +
       "</button>" +
-      '<div class="card status-card' + (o.clearance ? " clickable" : "") + '" id="statusCard">' +
+      '<div class="card status-card clickable" id="statusCard">' +
         '<div class="status-top">' +
           '<svg class="pin" style="color:' + pinColor + '" viewBox="0 0 24 24" fill="none" ' +
             'stroke="currentColor" stroke-width="1.8" ' +
@@ -187,10 +213,8 @@
             '<path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11Z"/>' +
             '<circle cx="12" cy="10" r="2.6"/></svg>' +
           '<span class="status-text" style="color:' + pinColor + '">' + esc(o.status) + "</span>" +
-          (o.clearance
-            ? '<span class="status-hint">' + esc(t("logistics")) +
-              '<span class="chev">›</span></span>'
-            : "") +
+          '<span class="status-hint">' + esc(t("logistics")) +
+            '<span class="chev">›</span></span>' +
         "</div>" +
         '<div class="sender">' + esc(t("shipFrom")) + "：" + esc(o.shipFrom) + "</div>" +
         '<div class="addr">' + esc(o.address) + "</div>" +
@@ -203,7 +227,7 @@
           '<span class="shop-arrow">›</span></div>' +
       "</div>" +
 
-      '<div class="card">' +
+      '<div class="card product-card" id="productCard">' +
         '<div class="prod">' + thumb +
           '<div class="prod-info">' +
             '<div class="title">' + esc(o.title) + "</div>" +
@@ -242,12 +266,12 @@
       setTimeout(function () { copyBtn.textContent = t("copy"); }, 1200);
     });
 
-    document.getElementById("thumb").addEventListener("click", function () {
+    document.getElementById("productCard").addEventListener("click", function () {
       post({ order_id: ORDER.id, action: "product", seq: ++SEQ });
     });
 
     var statusCard = document.getElementById("statusCard");
-    if (statusCard && statusCard.classList.contains("clickable")) {
+    if (statusCard) {
       statusCard.addEventListener("click", function () {
         post({ order_id: ORDER.id, action: "logistics", seq: ++SEQ });
       });

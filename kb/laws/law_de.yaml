@@ -1,7 +1,7 @@
 law_id: law-de-01
 country: 德国 / 欧盟
 country_code: DE/EU
-law_name: 欧盟消费者权利指令 2011/83/EU，德国 BGB §312g Widerrufsrecht
+law_name: 欧盟消费者权利指令（Widerrufsrecht）与德国消费者保护法落地条款
 applicable_scope: 欧盟境内远程线上购物
 core_rule:
   cooling_period: 14 days

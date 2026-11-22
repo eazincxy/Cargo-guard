@@ -1,16 +1,15 @@
 law_id: law-jp-01
 country: 日本
 country_code: JP
-law_name: 消费者契约法（通信贩卖冷却期 クーリングオフ）
-applicable_scope: 通信贩卖（网络邮购）、跨境直邮卖给日本消费者
+law_name: 消费者契约法（冷却期／クーリング・オフ）
+applicable_scope: 访问贩卖、电话推销等特定交易类型；网上购物（通信販売）不适用冷却期
 core_rule:
-  cooling_period: 8 days
-  start_from: 签收日
-  right: 无理由解除契约退货；商品页没写支持无理由不等于丧失法定权利
-  freight_rule: 冷却解除退货，跨境退回运费通常买家承担
+  cooling_period: 网购无法定冷却期
+  start_from: 不适用
+  right: 网上购物（通信販売）没有法定无理由退货权，退货以商家公示规则为准，商家有权拒绝单纯"不喜欢"的退货
+  freight_rule: 商家同意退货时，退回运费按商家条款或双方约定；商家责任（破损、错发、描述不符）由商家承担
 exception:
-  - 商家下单页面清晰单独提示并取得买家明确同意放弃冷却期
-  - 贴身内衣、定制商品、生鲜、开封后易变质品类
-notice_requirement: 排除冷却期必须清晰提示并取得买家明确同意，否则不能排除
+  - 冷却期仅适用于访问贩卖、电话推销、连锁销售等特定交易类型，不适用于网络邮购
+notice_requirement: 商家公示的退货规则需清晰可查，但未承诺无理由退货不等于存在法定权利
 refund_deadline: 以商家公示政策为准
 complaint_channel: 消费者厅 / 国民生活中心
