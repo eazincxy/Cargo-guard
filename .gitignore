@@ -37,6 +37,8 @@ playwright/.cache/
 
 # ---------- 本地数据 ----------
 data.db
+agent_memory.db
+agent_memory.db-*
 *.sqlite
 *.sqlite3
 ai_history.json

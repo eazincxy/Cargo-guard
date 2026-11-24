@@ -6,11 +6,17 @@ on:
     paths:
       - "auto_regress.py"
       - "test_cases.json"
+      - "app/**"
+      - "streamlit_app.py"
+      - "tests/**"
       - ".github/workflows/regress.yml"
   pull_request:
     paths:
       - "auto_regress.py"
       - "test_cases.json"
+      - "app/**"
+      - "streamlit_app.py"
+      - "tests/**"
       - ".github/workflows/regress.yml"
 
 jobs:
@@ -27,7 +33,10 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install -r requirements.txt
+
+      - name: Seed demo orders
+        run: python tests/seed_orders.py
 
       - name: Validate test cases
         run: python auto_regress.py --dry-run

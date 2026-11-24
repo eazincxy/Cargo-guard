@@ -1,0 +1,67 @@
+name: Lint
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  python-syntax:
+    name: Python syntax
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Validate all Python files
+        run: |
+          python - <<'PY'
+          import pathlib
+          import py_compile
+          import sys
+
+          SKIP_DIRS = {".venv", "venv", "env", "node_modules", ".git", "__pycache__"}
+          failures = []
+
+          for path in sorted(pathlib.Path(".").rglob("*.py")):
+              if SKIP_DIRS & set(path.parts):
+                  continue
+              try:
+                  py_compile.compile(str(path), doraise=True)
+                  print(f"OK   {path}")
+              except py_compile.PyCompileError as exc:
+                  failures.append((path, exc.msg))
+                  print(f"FAIL {path}")
+                  print(exc.msg)
+
+          if failures:
+              print(f"\n{len(failures)} file(s) failed the Python syntax check.")
+              sys.exit(1)
+
+          print("\nAll Python files passed the syntax check.")
+          PY
+
+  html-lint:
+    name: HTML lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install htmlhint
+        run: npm install --global htmlhint
+
+      - name: Validate all HTML files
+        run: htmlhint "**/*.html" --ignore "**/.venv/**,**/venv/**,**/node_modules/**,test_bad.html,test_good.html" --rules "tag-pair,attr-no-duplication,id-unique,doctype-html5"

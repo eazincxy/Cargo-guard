@@ -30,6 +30,9 @@ from pathlib import Path
 
 import requests
 
+from app.after_sales_agent import CUSTOMER_SERVICE_PROMPT
+from app.after_sales_agent import chat as production_chat
+
 ROOT = Path(__file__).resolve().parent
 CASES_PATH = ROOT / "test_cases.json"
 REPORT_DIR = ROOT / "reports"
@@ -41,25 +44,9 @@ MAX_RETRIES = 2
 TIMEOUT = 120
 
 # =========================================================
-# 主 system prompt（回归失败时会被自动改写）
+# 主 system prompt：唯一来源是生产 Agent，避免"回归测的是一份复制品"
 # =========================================================
-SYSTEM_PROMPT = """你是 CargoGuard，一名跨境售后维权参谋，帮助消费者处理跨境电商订单的售后问题。
-
-【身份与范围】
-1. 只处理跨境订单售后相关问题：物流异常、清关、破损/错货、退款退货、商家失联、税费争议等。
-2. 与售后无关的请求（写歌、闲聊、编程、推荐娱乐内容等）礼貌拒绝，并说明你只处理跨境售后订单问题。
-
-【合规底线（不可突破）】
-1. 绝不编造法律条文、条款编号、官方文件或平台规则；不确定时明确说"不确定/需核实"。
-2. 绝不协助编造理由、伪造证据、欺骗商家或平台；遇到此类请求必须拒绝，并说明平台处罚、账号受限乃至法律风险。
-3. 不承诺结果：不得说"一定退款/保证赔偿/肯定能追回"，只提供提高成功率的合规路径。
-4. 区分三类依据：商家承诺、平台规则、当地法律/海关规定；引用外部规则时必须提示以官方最新版本为准。
-
-【回答结构】
-1. 先给结论与判断（是否合理、问题可能出在哪）。
-2. 再给可执行步骤（按优先级排序，3-5 步）。
-3. 最后给证据与升级路径（保留哪些凭证、如何申请平台介入）。
-4. 语言简洁，用中文回答；必要时给出与商家沟通的合规话术示例（不得虚构规则）。"""
+SYSTEM_PROMPT = CUSTOMER_SERVICE_PROMPT
 
 
 JUDGE_PROMPT = """你是严格的售后回答质检员。请判断 Agent 的回答是否合格。
@@ -240,6 +227,35 @@ def run_case(case: dict, system_prompt: str) -> dict:
     }
 
 
+RUN_TAG = str(int(time.time()))
+
+
+def run_case_production(case: dict) -> dict:
+    """走生产 Agent 全链路（生产 prompt + RAG + 合规复核 + 记忆 + 降级），而非直连模型。
+
+    这是默认模式：回归意图是验证“发布出去的 Agent”，旧的直连 prompt 方式只能验证一段文本。
+    """
+    result = production_chat(
+        user_id=f"regress_{case['id']}",
+        message=case["user"],
+        thread_id=f"regress-{case['id']}-{RUN_TAG}",
+        allow_order_lookup=True,
+    )
+    answer = result.get("answer") or ""
+    verdict = judge_case(case, answer)
+    return {
+        "id": case["id"],
+        "kind": case.get("kind", ""),
+        "title": case.get("title", ""),
+        "user": case["user"],
+        "answer": answer,
+        "intent": result.get("intent", ""),
+        "capability": result.get("capability", ""),
+        "citations": result.get("citations", []),
+        **verdict,
+    }
+
+
 def improve_prompt(system_prompt: str, failures: list[dict]) -> str:
     """让 LLM 根据失败用例改写主 system prompt。"""
     blocks = []
@@ -346,6 +362,11 @@ def load_cases() -> list[dict]:
 def main() -> int:
     parser = argparse.ArgumentParser(description="CargoGuard 自动回归测试")
     parser.add_argument("--dry-run", action="store_true", help="只校验用例结构")
+    parser.add_argument(
+        "--improve",
+        action="store_true",
+        help="实验性：改用独立 prompt 并自动改写（仅写入报告，不写回生产代码）",
+    )
     args = parser.parse_args()
 
     load_env_file()
@@ -372,6 +393,8 @@ def main() -> int:
             "rounds": [],
             "prompt_changed": False,
             "final_prompt": SYSTEM_PROMPT,
+            "agent_mode": "dry-run",
+            "prompt_source": "app.after_sales_agent.CUSTOMER_SERVICE_PROMPT",
         }
         md_path, json_path = write_report(report, stamp)
         print(f"报告：{md_path}")
@@ -382,31 +405,48 @@ def main() -> int:
     rounds: list[dict] = []
     all_passed = False
 
-    for round_no in range(1, MAX_ROUNDS + 1):
-        print(f"\n=== 第 {round_no} 轮 ===")
+    if args.improve:
+        print("模式：standalone prompt（实验性，自动改写只进报告，不写回生产代码）")
+        for round_no in range(1, MAX_ROUNDS + 1):
+            print(f"\n=== 第 {round_no} 轮 ===")
+            results = []
+            for case in cases:
+                print(f"  运行 {case['id']} ...", end="", flush=True)
+                try:
+                    result = run_case(case, system_prompt)
+                except Exception as exc:  # noqa: BLE001
+                    print(f" 调用失败：{exc}")
+                    return 2
+                results.append(result)
+                print(" 通过" if result["passed"] else " 失败")
+
+            failures = [item for item in results if not item["passed"]]
+            rounds.append(
+                {"round": round_no, "failed": len(failures), "results": results}
+            )
+
+            if not failures:
+                all_passed = True
+                break
+
+            if round_no < MAX_ROUNDS:
+                print(f"  自动改写 system prompt（失败 {len(failures)} 条）...")
+                system_prompt = improve_prompt(system_prompt, failures)
+    else:
+        print("模式：生产 Agent（生产 prompt + RAG + 合规复核）")
         results = []
         for case in cases:
             print(f"  运行 {case['id']} ...", end="", flush=True)
             try:
-                result = run_case(case, system_prompt)
+                result = run_case_production(case)
             except Exception as exc:  # noqa: BLE001
                 print(f" 调用失败：{exc}")
                 return 2
             results.append(result)
             print(" 通过" if result["passed"] else " 失败")
-
-        failures = [item for item in results if not item["passed"]]
-        rounds.append(
-            {"round": round_no, "failed": len(failures), "results": results}
-        )
-
-        if not failures:
-            all_passed = True
-            break
-
-        if round_no < MAX_ROUNDS:
-            print(f"  自动改写 system prompt（失败 {len(failures)} 条）...")
-            system_prompt = improve_prompt(system_prompt, failures)
+        failed = sum(1 for item in results if not item["passed"])
+        rounds = [{"round": 1, "failed": failed, "results": results}]
+        all_passed = failed == 0
 
     final_results = rounds[-1]["results"] if rounds else []
     passed = sum(1 for item in final_results if item["passed"])
@@ -423,6 +463,8 @@ def main() -> int:
         "rounds": rounds,
         "prompt_changed": system_prompt != SYSTEM_PROMPT,
         "final_prompt": system_prompt,
+        "agent_mode": "standalone" if args.improve else "production",
+        "prompt_source": "app.after_sales_agent.CUSTOMER_SERVICE_PROMPT",
     }
 
     md_path, json_path = write_report(report, stamp)

@@ -1,0 +1,130 @@
+{
+  "version": 1,
+  "top_k": 4,
+  "min_score": 0.30,
+  "note": "检索 gold set：expected_ids 对应 app/kb.py 文档 id（facts.csv 行号为 4 位数字，法规 yaml 为 law-xx-01）。同一国家有多条法规时允许任一命中。",
+  "cases": [
+    {
+      "id": "us-return-freight",
+      "query": "美国 退货 运费 谁承担",
+      "country_code": "US",
+      "expected_ids": ["0020", "law-us-01"]
+    },
+    {
+      "id": "us-ca-return-policy",
+      "query": "加州 退货 政策 30天",
+      "country_code": "US",
+      "state_code": "ca",
+      "expected_ids": ["0027", "law-us-01"]
+    },
+    {
+      "id": "us-ny-return-policy",
+      "query": "纽约 退货 政策 公示",
+      "country_code": "US",
+      "state_code": "ny",
+      "expected_ids": ["0028", "law-us-01"]
+    },
+    {
+      "id": "jp-no-cooling-off",
+      "query": "日本 网购 七天 无理由退货",
+      "country_code": "JP",
+      "expected_ids": ["0018", "law-jp-01"]
+    },
+    {
+      "id": "kr-seven-day",
+      "query": "韩国 签收 7天 撤销权",
+      "country_code": "KR",
+      "expected_ids": ["0019", "law-kr-01"]
+    },
+    {
+      "id": "de-widerruf",
+      "query": "德国 14天 撤回权 退货运费",
+      "country_code": "DE",
+      "expected_ids": ["0021", "law-de-01"]
+    },
+    {
+      "id": "th-return-policy",
+      "query": "泰国 无理由退货 冷静期",
+      "country_code": "TH",
+      "expected_ids": ["0022", "law-th-01"]
+    },
+    {
+      "id": "gb-short-term",
+      "query": "英国 30天 全额退款 破损",
+      "country_code": "GB",
+      "expected_ids": ["0024"]
+    },
+    {
+      "id": "eu-defect",
+      "query": "欧盟 瑕疵担保 到货破损 运费",
+      "country_code": "EU",
+      "expected_ids": ["0023", "law-de-01"]
+    },
+    {
+      "id": "jp-defect",
+      "query": "日本 到货破损 瑕疵担保",
+      "country_code": "JP",
+      "expected_ids": ["0026", "law-jp-01"]
+    },
+    {
+      "id": "parcel-stall",
+      "query": "包裹 停滞 丢件 物流异常",
+      "expected_ids": ["0006"]
+    },
+    {
+      "id": "signed-not-received",
+      "query": "签收 没收到 放门口 被盗",
+      "expected_ids": ["0007", "0015"]
+    },
+    {
+      "id": "wrong-item",
+      "query": "发错货 商家责任 退货运费",
+      "expected_ids": ["0012"]
+    },
+    {
+      "id": "merchant-runaway",
+      "query": "商家跑路 店铺关闭 平台介入",
+      "expected_ids": ["0013"]
+    },
+    {
+      "id": "tax-vs-shipping",
+      "query": "包邮 包税 关税 谁承担",
+      "expected_ids": ["0016", "0008"]
+    },
+    {
+      "id": "paypal-chargeback",
+      "query": "PayPal 拒付 chargeback",
+      "expected_ids": ["0004", "0005"]
+    },
+    {
+      "id": "amazon-atoz",
+      "query": "亚马逊 A-to-z 强制退款",
+      "expected_ids": ["0002"]
+    },
+    {
+      "id": "compensation-ratio",
+      "query": "补偿比例 代金券 金额",
+      "expected_ids": ["0011"]
+    },
+    {
+      "id": "customs-hold",
+      "query": "清关 查验 扣货 关税",
+      "expected_ids": ["0008", "0016"]
+    },
+    {
+      "id": "evidence-materials",
+      "query": "举证 开箱视频 聊天截图",
+      "expected_ids": ["0015"]
+    },
+    {
+      "id": "platform-dispute-time",
+      "query": "平台介入 周期 工作日",
+      "expected_ids": ["0014"]
+    },
+    {
+      "id": "damage-return-cost",
+      "query": "商品破损 跨境退货 复杂",
+      "expected_ids": ["0009", "0023", "0024"]
+    }
+  ]
+}

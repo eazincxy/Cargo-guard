@@ -1,0 +1,127 @@
+{
+  "memory_cases": [
+    {
+      "id": "mem-currency",
+      "query": "退款金额按什么币种结算？",
+      "intent": "refund",
+      "records": [
+        {"text": "偏好币种：USD", "weight": 0.6, "age_days": 1},
+        {"text": "所在国家：美国", "weight": 0.6, "age_days": 1}
+      ],
+      "expect_injected": ["偏好币种：USD"],
+      "expect_not_injected": ["所在国家：美国"]
+    },
+    {
+      "id": "mem-language",
+      "query": "回复用英文可以吗",
+      "intent": "product",
+      "records": [
+        {"text": "语言偏好：英文", "weight": 0.7, "age_days": 2},
+        {"text": "偏好先联系商家", "weight": 0.6, "age_days": 2}
+      ],
+      "expect_injected": ["语言偏好：英文"],
+      "expect_not_injected": ["偏好先联系商家"]
+    },
+    {
+      "id": "mem-tariff",
+      "query": "美国关税大概多少",
+      "intent": "logistics",
+      "records": [
+        {"text": "所在国家：美国", "weight": 0.6, "age_days": 3},
+        {"text": "称呼：小王", "weight": 0.6, "age_days": 3}
+      ],
+      "expect_injected": ["所在国家：美国"],
+      "expect_not_injected": ["称呼：小王"]
+    },
+    {
+      "id": "mem-platform-preference",
+      "query": "投诉的话我希望平台介入",
+      "intent": "complaint",
+      "records": [
+        {"text": "售后偏好：希望平台介入处理投诉", "weight": 0.8, "age_days": 1},
+        {"text": "所在国家：韩国", "weight": 0.6, "age_days": 1}
+      ],
+      "expect_injected": ["售后偏好：希望平台介入处理投诉"],
+      "expect_not_injected": ["所在国家：韩国"]
+    },
+    {
+      "id": "mem-multi-fact",
+      "query": "我在美国，退款按什么币种，美元可以吗",
+      "intent": "refund",
+      "records": [
+        {"text": "偏好币种：USD", "weight": 0.6, "age_days": 4},
+        {"text": "所在国家：美国", "weight": 0.6, "age_days": 4}
+      ],
+      "expect_injected": ["偏好币种：USD", "所在国家：美国"],
+      "expect_not_injected": []
+    },
+    {
+      "id": "mem-expired-skip",
+      "query": "退款金额按什么币种结算？",
+      "intent": "refund",
+      "records": [
+        {"text": "偏好币种：EUR", "weight": 0.9, "age_days": 400, "expired": true}
+      ],
+      "expect_injected": [],
+      "expect_not_injected": ["偏好币种：EUR"]
+    },
+    {
+      "id": "mem-decayed-skip",
+      "query": "退款金额按什么币种结算？",
+      "intent": "refund",
+      "records": [
+        {"text": "偏好币种：JPY", "weight": 0.2, "age_days": 365}
+      ],
+      "expect_injected": [],
+      "expect_not_injected": ["偏好币种：JPY"]
+    },
+    {
+      "id": "mem-chitchat-skip",
+      "query": "你好呀，今天天气不错",
+      "intent": "chitchat",
+      "records": [
+        {"text": "偏好币种：USD", "weight": 0.9, "age_days": 0}
+      ],
+      "expect_injected": [],
+      "expect_not_injected": ["偏好币种：USD"]
+    }
+  ],
+  "summary_cases": [
+    {
+      "id": "sum-refund",
+      "history": [
+        {"role": "user", "content": "我的订单 ORD-1004 想退货，商家一直不回复"},
+        {"role": "assistant", "content": "已记录订单 ORD-1004 的退货诉求，商家承诺 48 小时内回复"},
+        {"role": "user", "content": "我人在美国加州，退款请用美元结算"},
+        {"role": "assistant", "content": "已知悉您在美国加州，退款币种按美元处理"},
+        {"role": "user", "content": "如果商家还是不回复怎么办"},
+        {"role": "assistant", "content": "可以申请平台介入，平台会在 3 个工作日内处理"},
+        {"role": "user", "content": "那运费谁出"},
+        {"role": "assistant", "content": "商品破损属商家责任，退货运费由商家承担"},
+        {"role": "user", "content": "好的"},
+        {"role": "assistant", "content": "已为您登记跟进，有进展会通知您"},
+        {"role": "user", "content": "谢谢"},
+        {"role": "assistant", "content": "不客气，祝您购物愉快"}
+      ],
+      "expect_keep": ["ORD-1004", "美元"]
+    },
+    {
+      "id": "sum-customs",
+      "history": [
+        {"role": "user", "content": "订单 ORD-1005 卡在清关两周了"},
+        {"role": "assistant", "content": "已查到 ORD-1005 在海关清关，需要您补充收件人身份信息"},
+        {"role": "user", "content": "我人在英国，需要提供什么材料"},
+        {"role": "assistant", "content": "需要提供护照首页照片和清关授权书，提交后 5 个工作日内放行"},
+        {"role": "user", "content": "会不会产生额外关税"},
+        {"role": "assistant", "content": "关税由收件人承担，本单预估 20 英镑，需以海关通知为准"},
+        {"role": "user", "content": "太贵了"},
+        {"role": "assistant", "content": "如不接受可选择退运，退运费由买家承担"},
+        {"role": "user", "content": "再想想"},
+        {"role": "assistant", "content": "好的，随时为您跟进清关进度"},
+        {"role": "user", "content": "嗯"},
+        {"role": "assistant", "content": "感谢您的耐心等待"}
+      ],
+      "expect_keep": ["ORD-1005", "清关"]
+    }
+  ]
+}

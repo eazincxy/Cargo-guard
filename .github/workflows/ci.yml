@@ -29,6 +29,24 @@ jobs:
       - name: Compile all Python files
         run: python -m compileall -q streamlit_app.py app
 
+      - name: Run agent unit tests
+        run: python tests/test_agent_features.py
+
+      - name: Review rule-layer gate
+        run: python tests/review_eval.py --rules-only --fail-on-fp
+
+      - name: Retrieval quality gate
+        run: python tests/retrieval_eval.py --min-hit-rate 0.9
+
+      - name: Red-team gate
+        run: python tests/redteam_eval.py
+
+      - name: Memory & summary quality gate
+        run: >-
+          python tests/memory_eval.py
+          --min-hit-rate 0.9 --min-recall 0.9
+          --min-fidelity 0.85 --max-compression 0.75
+
       - name: Validate component HTML
         run: |
           python - <<'PY'
@@ -43,6 +61,9 @@ jobs:
           print(f"checked {len(files)} component pages")
           PY
 
+      - name: Streamlit HITL interaction tests
+        run: python tests/test_streamlit_hitl.py
+
       - name: Streamlit AppTest smoke test
         run: |
           python - <<'PY'
@@ -54,3 +75,93 @@ jobs:
           assert not at.exception, [str(e.value) for e in at.exception]
           print("AppTest OK")
           PY
+
+  docker:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build image (with observability dependencies)
+        run: docker build --build-arg INSTALL_OBSERVABILITY=true -t cargoguard:ci .
+
+      - name: Start Streamlit container
+        run: |
+          docker run -d --name cargoguard-ui -p 8501:8501 \
+            -e SUPPORTPILOT_AGENT_DB=/tmp/agent_memory.db \
+            cargoguard:ci
+
+      - name: Verify Streamlit health
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:8501/_stcore/health; then
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' cargoguard-ui)" != "true" ]; then
+              echo "Streamlit container exited"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "Streamlit health check timed out"
+          exit 1
+
+      - name: Start API container
+        run: |
+          docker run -d --name cargoguard-api -p 8000:8000 \
+            -e SUPPORTPILOT_AGENT_DB=/tmp/agent_memory.db \
+            cargoguard:ci \
+            uvicorn app.api:app --host 0.0.0.0 --port 8000
+
+      - name: Verify API health and metrics
+        run: |
+          for attempt in $(seq 1 30); do
+            if curl -fsS http://localhost:8000/health && curl -fsS http://localhost:8000/metrics; then
+              exit 0
+            fi
+            if [ "$(docker inspect -f '{{.State.Running}}' cargoguard-api)" != "true" ]; then
+              echo "API container exited"
+              exit 1
+            fi
+            sleep 5
+          done
+          echo "API health check timed out"
+          exit 1
+
+      - name: Show container logs
+        if: always()
+        run: |
+          docker logs cargoguard-ui || true
+          docker logs cargoguard-api || true
+
+      - name: Clean up containers
+        if: always()
+        run: docker rm -f cargoguard-ui cargoguard-api || true
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: End-to-end regression with LLM judge
+        if: env.OPENAI_API_KEY != ''
+        run: python auto_regress.py
+
+      - name: Skip notice (no API key configured)
+        if: env.OPENAI_API_KEY == ''
+        run: echo "OPENAI_API_KEY 未配置，跳过真实端到端回归（不再以 dry-run 冒充通过）"

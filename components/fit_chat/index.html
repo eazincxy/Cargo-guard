@@ -34,11 +34,48 @@
       comp.style.bottom = "16px";
       comp.style.margin = "0";
       comp.style.zIndex = "999";
-      var compH = comp.getBoundingClientRect().height;
+      var approval = doc.querySelector(".st-key-cg_hitl_card");
+      // 右上角两个图标固定在同一绝对高度（距视口顶部 22px）：空对话/有历史时都不偏移
+      var iconBtns = doc.querySelectorAll(".st-key-cg_hist_btn, .st-key-cg_new_btn");
+      if (iconBtns.length) {
+        var curTop = iconBtns[0].getBoundingClientRect().top;
+        var delta = Math.round(22 - curTop);
+        if (Math.abs(delta) > 1) {
+          for (var i = 0; i < iconBtns.length; i++) {
+            var base = parseFloat(window.parent.getComputedStyle(iconBtns[i]).top) || 0;
+            // 必须带 important：样式表里的 top 声明带 !important，普通内联样式压不住
+            iconBtns[i].style.setProperty("top", (base + delta) + "px", "important");
+          }
+        }
+      }
+      // 先清掉上拉偏移再测量，避免重复叠加导致抖动
+      chat.style.removeProperty("top");
+      chat.style.removeProperty("position");
       var chatTop = chat.getBoundingClientRect().top;
+      // 对话区上沿贴到右上角图标下方（图标悬浮在页面顶部，中间留白不参与布局）
+      var icons = doc.querySelector(".st-key-cg_hist_btn") || doc.querySelector(".st-key-cg_new_btn");
+      if (icons) {
+        var lift = Math.round(chatTop - icons.getBoundingClientRect().bottom - 4);
+        if (lift > 0) {
+          chat.style.position = "relative";
+          chat.style.top = (-lift) + "px";
+          chatTop = chatTop - lift;
+        }
+      }
       var vh = window.parent.innerHeight;
-      // 38px 为对话区与输入框之间的默认间距，另留 14px 底部间距与 2px 余量
-      var h = vh - chatTop - compH - 38 - 14 - 2;
+      if (approval) {
+        // 审批卡片与输入框同处固定底部区域；高度不足时区域内滚动，按钮不会被输入框遮挡。
+        comp.style.maxHeight = Math.max(180, vh - chatTop - 140) + "px";
+        comp.style.overflowY = "auto";
+        comp.style.overflowX = "hidden";
+      } else {
+        comp.style.removeProperty("max-height");
+        comp.style.removeProperty("overflow-y");
+        comp.style.removeProperty("overflow-x");
+      }
+      var compH = comp.getBoundingClientRect().height;
+      // 16px 为对话区与输入框之间的间距，另留 10px 底部间距与 2px 余量
+      var h = vh - chatTop - compH - 16 - 10 - 2;
       // 不在聊天节点上写内联 height：React 切页复用 div 时会把旧高度带到新页面
       chat.style.removeProperty("height");
       doc.documentElement.style.setProperty(
@@ -47,13 +84,11 @@
     } catch (e) {}
   }
 
+  // 常驻定时校准：切换会话/新对话时组件可能不会收到 render 事件，靠轮询兜底
   function loop() {
-    var n = 0;
-    var timer = setInterval(function () {
-      fit();
-      if (++n > 8) clearInterval(timer);
-    }, 250);
     fit();
+    if (loop.timer) return;
+    loop.timer = setInterval(fit, 500);
   }
 
   window.addEventListener("message", function (event) {
