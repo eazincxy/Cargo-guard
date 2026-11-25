@@ -607,6 +607,7 @@ MEMORY_EXTRACTION_PROMPT = """你是跨境电商售后系统的「用户长期�
 禁止提取：
 - 一次性问题、临时情绪、订单当前的物流状态；
 - 完整收货地址、电话、邮箱、证件号等敏感信息；
+- 买家只说“在 X 国买的／下单的”时，X 只是购买地，不得记为所在国家或收货国；只有明确说“我住在 X 国／收货地址在 X 国”才可记为所在国家；
 - 任何没有明确依据的推断。
 
 输出要求：严格输出 JSON，不要 Markdown、不要解释，格式如下：
@@ -623,6 +624,11 @@ _CURRENCY_NAMES = {
     "USD": "USD", "EUR": "EUR", "JPY": "JPY", "KRW": "KRW",
     "CNY": "CNY", "GBP": "GBP", "THB": "THB", "AUD": "AUD", "CAD": "CAD",
 }
+_RESIDENCE_WORDS = (
+    "我住在", "住在", "定居", "常驻", "收货地址", "寄到", "寄往", "发到", "送到",
+    "i live in", "shipping address",
+)
+
 _COUNTRY_HINTS = {
     "中国": "中国", "china": "中国",
     "美国": "美国", "usa": "美国", "united states": "美国",
@@ -632,6 +638,7 @@ _COUNTRY_HINTS = {
     "法国": "法国", "france": "法国",
     "德国": "德国", "germany": "德国",
     "泰国": "泰国", "thailand": "泰国",
+    "澳大利亚": "澳大利亚", "澳洲": "澳大利亚", "australia": "澳大利亚",
 }
 
 _COUNTRY_ISO = {
@@ -688,10 +695,12 @@ def _rule_extract(query: str) -> list[str]:
         facts.append(f"偏好币种：{_CURRENCY_NAMES.get(match.group(1).upper(), match.group(1).upper())}")
 
     low = text.lower()
-    for hint, country in _COUNTRY_HINTS.items():
-        if hint in low:
-            facts.append(f"所在国家/地区：{country}")
-            break
+    # 只有明确表达居住地或收货地时才记国家；“我在 X 国买的”属于购买地，不能当居住国
+    if any(word in text for word in _RESIDENCE_WORDS):
+        for hint, country in _COUNTRY_HINTS.items():
+            if hint in low:
+                facts.append(f"所在国家/地区：{country}")
+                break
 
     match = _LANGUAGE_RE.search(text)
     if match:

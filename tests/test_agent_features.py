@@ -504,6 +504,13 @@ def test_multi_turn_context():
     assert answer_stage._stated_destination("shipping address is in Australia") == "AU"
     print("STATED_DESTINATION_OK")
 
+    # c4) 购买地不进入长期记忆；只有居住/收货表述才记所在国家
+    from app import agent_act  # noqa: PLC0415
+
+    assert not any("国家" in f for f in agent_act._rule_extract("我在澳大利亚买的，商品有缺陷"))
+    assert any("澳大利亚" in f for f in agent_act._rule_extract("我住在澳大利亚，想退货"))
+    print("RESIDENCE_MEMORY_OK")
+
     # d) 追问时放宽记忆相关度阈值，避免偏好类记忆被全部过滤
     user = _uid("relax")
     agent.save_user_memory(user, ["偏好币种：USD"])
