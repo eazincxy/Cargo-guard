@@ -498,6 +498,12 @@ def test_multi_turn_context():
     ) == ""
     print("FOLLOWUP_CONTEXT_OK")
 
+    # c3) 购买地不等于收货国：只有明确说“寄到/收货在 X 国”才算确认
+    assert answer_stage._stated_destination("我在澳大利亚买的，商品有缺陷想退款") == ""
+    assert answer_stage._stated_destination("我在澳大利亚买的，寄到墨尔本") == "AU"
+    assert answer_stage._stated_destination("shipping address is in Australia") == "AU"
+    print("STATED_DESTINATION_OK")
+
     # d) 追问时放宽记忆相关度阈值，避免偏好类记忆被全部过滤
     user = _uid("relax")
     agent.save_user_memory(user, ["偏好币种：USD"])

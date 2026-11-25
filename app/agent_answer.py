@@ -59,7 +59,7 @@ CUSTOMER_SERVICE_PROMPT = """你是 CargoGuard，跨境电商售后客服 Agent�
 【国家判定】
 14. 必须严格区分两个国家，不得混用：收货国指买家经常居所地/收货地址所在国，决定消费者保护与无理由退货规则；发货国指商家发件地，决定出口管制、禁限品与出口报关。
 15. 有可查订单时：收货国取订单收货地址，发货国取订单发件地址，不需要再问国别；买家本轮明确陈述的国家优先于订单记录。两者冲突时以买家陈述为准，并说明“订单记录为 X 国、您提到的是 Y 国”，请买家确认订单是否正确。
-16. 没有可查订单时（外平台订单或未提供订单号），引用法条前必须先同时明确收货国与发货国。买家说“我在澳大利亚买的”这类表述只能确定收货国，发货国仍然未知，必须单独确认；两项缺哪项问哪项，一次只问一项，不得凭空假定。
+16. 没有可查订单时（外平台订单或未提供订单号），引用法条前必须先同时明确收货国与发货国。“我在澳大利亚买的／下的单”只说明购买地，既不能直接当作收货国，也不能当作发货国：收货国需向买家确认“收货地址是否在澳大利亚”，发货国需确认“商家从哪个国家发货”。两项缺哪项问哪项，一次只问一项，不得凭空假定；只有买家明确说出“寄到／收货地址在 X 国”时才算确认收货国。
 17. 国别未确认前只能给通用说明，不得引用具体国家法条，不得给出退款时效、退货期限或关税结论。国别追问的优先级高于商品细节与签收时间。
 18. 买家说明在其他平台下单但未给订单号时：先确认收货国与发货国，再按该国规则回答；既未给订单号也未说明平台时，先问“是否在本平台下单、订单号是多少”。
 19. 法律适用说明：消费者合同默认适用收货国（消费者经常居所地）法律，而非发货国法律；仅当买家主动选择适用发货地法律，或商家未在买家所在地经营且为一次性跨境发货时例外。商家以格式条款约定“适用发货国法律”来排除收货国强制性消费者保护的，应提示该条款很可能无效。
@@ -317,6 +317,21 @@ def _format_tool_trace(trace: list[dict]) -> str:
     return "\n".join(lines)
 
 
+_SHIP_TO_WORDS = (
+    "收货", "寄到", "寄往", "寄给", "发到", "送到", "送达", "转运到", "邮寄到", "收件",
+    "ship to", "shipped to", "deliver to", "delivery to", "shipping address", "send to",
+)
+
+
+def _stated_destination(query: str) -> str:
+    """只有买家明确说出收货地时才返回国家码；“在 X 国买的”只是购买地，不算收货国。"""
+    code = stated_country_iso(query)
+    if not code:
+        return ""
+    low = (query or "").lower()
+    return code if any(word in low for word in _SHIP_TO_WORDS) else ""
+
+
 def _followup_context(state: dict[str, Any]) -> str:
     """本轮像是对上一轮追问的回答时，把上一问显式带进提示词。
 
@@ -378,7 +393,8 @@ def _llm_answer(state: dict[str, Any], runtime: Any) -> tuple[str, dict[str, int
 
         system_blocks.append("【订单信息】\n" + _format_order(state.get("order") or {}))
 
-        stated = stated_country_iso(state.get("query") or "")
+        stated = _stated_destination(state.get("query") or "")
+        mentioned = stated_country_iso(state.get("query") or "")
         if stated:
             order_cc, _ = buyer_region((state.get("order") or {}).get("shipping_address") or "")
             note = [f"【买家本轮说明的收货国家】{stated}（以本轮陈述为准，法规必须按该国适用）"]
@@ -395,6 +411,11 @@ def _llm_answer(state: dict[str, Any], runtime: Any) -> tuple[str, dict[str, int
                        else "；必须追问买家所在州。")
                 )
             system_blocks.append("\n".join(note))
+        elif mentioned:
+            system_blocks.append(
+                f"【买家提到的国家】{mentioned} 只是购买地或提及地，不能当作收货国，"
+                "在买家确认收货地址前不得按该国法规给出结论；只能追问收货国与发货国。"
+            )
 
         if state.get("extra_context"):
             system_blocks.append("【补充背景】\n" + wrap_untrusted(state["extra_context"]))
