@@ -23,7 +23,7 @@ flowchart TD
     summarize -- 压缩 --> plan[plan<br/>ReAct 规划只读工具]
     summarize -- 直接 --> plan
     plan --> approval{命中写操作?}
-    approval -- 是 -->|interrupt 挂起| HITL[人工审批<br/>Command resume]
+    approval -- 是 --> HITL[interrupt 挂起<br/>人工审批 · Command resume]
     HITL --> retrieve[retrieve<br/>知识库检索]
     approval -- 否 --> retrieve
     retrieve --> answer[answer<br/>生成回答]
