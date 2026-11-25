@@ -31,7 +31,7 @@ CUSTOMER_SERVICE_PROMPT = """你是 CargoGuard，跨境电商售后客服 Agent�
 
 【最高优先级：禁止幻觉】
 1. 只能依据【知识库检索结果】【订单信息】【用户长期记忆】回答；
-2. 检索结果没有覆盖的规则，必须明确说“知识库暂无相关规则”，不得编造天数、条款号、费用、平台政策；
+2. 检索结果没有覆盖的规则，必须明确说“知识库暂无相关规则”，不得编造天数、条款号、费用、平台政策；禁止在正文引用任何具体法条编号（如“第25条”“Article 9”）：即使检索结果中出现，正文也只表述规则内容，不写编号，来源由末尾 <SOURCES> 标记指向原文；
 3. 不得承诺“一定可以退款/一定放行”；不替买家发送消息或提交申诉。
 
 【业务重点】
@@ -71,6 +71,13 @@ CUSTOMER_SERVICE_PROMPT = """你是 CargoGuard，跨境电商售后客服 Agent�
 【具体场景硬性要求】
 23. 签收未收到：行动步骤里必须至少写出一个买家保护计划的英文原名（Amazon A-to-z Guarantee、eBay Money Back Guarantee、PayPal/信用卡 chargeback），不能只写“平台介入/平台客服/发起未收到商品反馈”。
 24. 附件识别结果里有物流节点时间：必须结合当前日期算出停滞天数；清关或运输超过 10 天无更新，直接判定“已停滞约 X 天，属于履约异常”，并建议买家并行在平台发起未收到货/物流异常售后，不得只让买家等待或只向商家追问。
+25. 买家泛问“申请售后需要准备哪些证据/材料”时：先给出通用证据清单（开箱视频与商品问题照片、外包装与物流面单照片、与商家聊天记录、订单与支付凭证），再视情况追问一个具体问题；不得因缺商品细节就只追问不答。
+26. 知识库未收录某场景的具体清单时，不得只回复“暂无”：应给出该场景的通用/常见做法作为方向，并明确“具体以官方/商家/承运方正式通知为准”。例如清关待补件，常见需补充身份证明、订单/发票、商品用途说明等材料，通过官方或平台渠道提交并保留凭证，警惕非官方渠道索要费用或敏感信息。
+27. 涉及关税/税费承担：必须先点明通用原则“包邮不等于包税，税费承担以商品页披露、贸易条款（DDP/DDU 等）与当地海关规定为准”；即使知识库未覆盖承诺如何强制执行，也要给出该原则，并建议凭页面承诺截图向商家书面主张或申请平台介入，提示保留海关通知与缴费凭证。
+28. 商家跑路/失联/关店/商品下架类求助：行动步骤必须包含——保存订单/支付/聊天证据 → 向平台投诉并申请介入或保证金赔付 → 尝试支付渠道申诉或拒付 → 必要时联系当地消费者保护机构；不得省略消费者保护机构这一升级路径。
+29. 未发货/待发货阶段申请取消：先建议买家书面联系商家提出取消并保留沟通记录，再说明商家不处理时可申请平台介入并留意处理时效；不得跳过“书面联系商家”这一步。
+30. 买家要求编造退款理由、虚假法条、威胁文案、伪报申报等违规协助时：必须明确拒绝，说明该行为的风险与后果（平台处罚、账号受限、法律责任等），并引导基于真实事实走合规售后/投诉流程；不得只拒绝而不提示风险。
+31. 说明某国法定无理由退货/撤销权（冷静期）时，必须完整覆盖四项要件，缺一不可：① 法定期限与起算点；② 法定例外品类；③ 例外或退货限制须由商家提前/单独明确告知，否则相关条款无效；④ 退货运费承担方。
 
 【结构（仅问题求助时使用）】
 【现状】【结论】【跨境风险】【行动步骤】【举证材料】"""
@@ -299,6 +306,30 @@ def split_sources(answer: str) -> tuple[str, list[str], bool]:
     return cleaned, [t for t in titles if t], bool(match)
 
 
+# 正文一律不出现具体法条编号：条文号即便真实，也常被模型张冠李戴或显得过度断言，
+# 且回归用例明确禁止"编造/引用具体条款编号"。来源标记 <SOURCES> 已指向原文，
+# 正文只表述规则内容即可。该清洗独立于 review_mode，永远生效。
+_CLAUSE_WITH_NAME_RE = re.compile(r"《[^》]{1,30}》\s*第\s*\d+\s*[条款项]")
+_CLAUSE_BARE_RE = re.compile(r"第\s*\d+\s*[条款项]")
+_CLAUSE_EN_RE = re.compile(r"(?:Article|Art\.?)\s*\d+[a-z]?", re.I)
+_CLAUSE_SECTION_RE = re.compile(r"§\s*\d+[a-z]?")
+
+
+def _strip_clause_numbers(text: str) -> str:
+    """移除正文中的具体法条编号引用，替换为通用表述；返回清洗后的文本。"""
+    if not text:
+        return text
+    text = _CLAUSE_WITH_NAME_RE.sub("相关法律规定", text)
+    text = _CLAUSE_BARE_RE.sub("相关规定", text)
+    text = _CLAUSE_EN_RE.sub("the relevant rules", text)
+    text = _CLAUSE_SECTION_RE.sub("the relevant rules", text)
+    # 连续替换可能产生的重复与多余空格
+    text = re.sub(r"(相关规定){2,}", "相关规定", text)
+    text = re.sub(r"(相关法律规定){2,}", "相关法律规定", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text
+
+
 def _is_network_error(exc: Exception) -> bool:
     """区分“断网/连不上”与其它异常：前者直接给简短提示，不输出长篇摘录。"""
     return isinstance(exc, (urllib.error.URLError, TimeoutError, OSError))
@@ -499,6 +530,7 @@ def answer_node(state: dict[str, Any], runtime: Any) -> dict[str, Any]:
         try:
             answer, usage = _llm_answer(state, runtime)
             answer, cited_titles, sources_explicit = split_sources(answer)
+            answer = _strip_clause_numbers(answer)
             return {
                 "answer": answer,
                 "cited_titles": cited_titles,
