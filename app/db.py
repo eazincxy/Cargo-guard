@@ -24,7 +24,7 @@ def _add_columns(conn, table: str, additions: list[tuple[str, str]]) -> None:
 
 def _migrate(conn):
     """对已存在的旧库做幂等加列，补齐订单展示与可观测性埋点字段。"""
-    # 订单展示列：旧库曾由 import_orders.py 补齐，新库/CI 直接在这里建全
+    # 订单展示列：旧库曾由导入脚本补齐，新库/CI 直接在这里建全
     _add_columns(conn, "orders", [
         ("product_name", "TEXT"),
         ("quantity", "INTEGER DEFAULT 1"),
