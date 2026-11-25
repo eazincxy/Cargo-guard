@@ -143,7 +143,7 @@ jobs:
     name: e2e 回归（LLM Judge，仅 main，需配置 API key）
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: tests
+    needs: check
     # 只在 main 分支推送时跑：PR 不消耗真实模型额度，也避免 judge 抖动卡住合并
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     # Judge 是模型、判定存在抖动（见 README §10）：e2e 失败不阻断绿，报告照常上传供人工查看
