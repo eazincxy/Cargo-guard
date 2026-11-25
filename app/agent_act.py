@@ -568,6 +568,7 @@ def retrieve_node(state: dict[str, Any], runtime: Any) -> dict[str, Any]:
     elif plan.get("country_code"):
         country = str(plan["country_code"]).upper()
     query = plan.get("search_query") or _build_search_query(state)
+    country = country or ""
 
     pool = ThreadPoolExecutor(max_workers=1)
     try:
@@ -599,6 +600,14 @@ def retrieve_node(state: dict[str, Any], runtime: Any) -> dict[str, Any]:
     finally:
         # 超时后不再等待卡住的检索线程
         pool.shutdown(wait=False, cancel_futures=True)
+
+    if retrieved and not country:
+        # 收货国未确认：法规类没有可适用的法域，不注入也不作为来源，
+        # 避免出现与答复无关的别国法条（如澳洲问题混入德国撤回权）
+        retrieved = [
+            item for item in retrieved
+            if ((item.get("meta") or {}).get("kind") or "") != "law"
+        ]
 
     return _retrieval_update(state, retrieved, query, started, runtime)
 
