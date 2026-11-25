@@ -21,6 +21,8 @@ _COUNTRY_KEYWORDS = [
     ("法国", "FR"), ("france", "FR"), ("paris", "FR"),
     ("德国", "DE"), ("germany", "DE"), ("berlin", "DE"),
     ("泰国", "TH"), ("thailand", "TH"), ("bangkok", "TH"),
+    ("澳大利亚", "AU"), ("澳洲", "AU"), ("australia", "AU"),
+    ("sydney", "AU"), ("melbourne", "AU"),
 ]
 
 

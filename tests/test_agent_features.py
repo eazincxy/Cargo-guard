@@ -478,6 +478,26 @@ def test_multi_turn_context():
     assert msgs[-1]["content"] == "那运费呢？"
     print("HISTORY_TRIM_OK")
 
+    # c2) 简短回答承接上一轮追问：把上一问带入提示词，避免被当成新问题
+    from app import agent_answer as answer_stage  # noqa: PLC0415
+
+    followup_state = dict(
+        state,
+        query="WeChat",
+        history=[
+            {"role": "user", "content": "卖家跑路了怎么办"},
+            {"role": "assistant", "content": "请问您用的是 PayPal、信用卡还是平台内支付？"},
+            {"role": "user", "content": "WeChat"},
+        ],
+    )
+    note = answer_stage._followup_context(followup_state)
+    assert "PayPal" in note and "WeChat" in note, note
+    # 正常长度的新问题不应被当成追问回答
+    assert answer_stage._followup_context(
+        dict(followup_state, query="订单 ORD-1007 一直不发货，怎么申请退款")
+    ) == ""
+    print("FOLLOWUP_CONTEXT_OK")
+
     # d) 追问时放宽记忆相关度阈值，避免偏好类记忆被全部过滤
     user = _uid("relax")
     agent.save_user_memory(user, ["偏好币种：USD"])

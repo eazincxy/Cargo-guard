@@ -310,6 +310,8 @@ def _format_order(order: dict[str, Any]) -> str:
         f"下单时间：{order.get('order_time') or '未标注'}",
         f"收货国家/地区：{region}",
     ]
+    origin_code, _ = buyer_region(order.get("origin_address") or "")
+    lines.append(f"发货国家/地区：{origin_code.upper() if origin_code else '未识别'}")
     return "\n".join(lines)
 
 
@@ -641,6 +643,7 @@ _COUNTRY_ISO = {
     "法国": "FR", "france": "FR",
     "德国": "DE", "germany": "DE",
     "泰国": "TH", "thailand": "TH",
+    "澳大利亚": "AU", "澳洲": "AU", "australia": "AU",
 }
 
 _US_STATE_HINTS = (
