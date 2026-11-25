@@ -48,6 +48,11 @@ reports/
 *.log
 logs/
 
+# ---------- 本地临时 / 编辑器 ----------
+.trae/
+test_bad.html
+test_good.html
+
 # ---------- 系统 / 编辑器 ----------
 .DS_Store
 Thumbs.db
