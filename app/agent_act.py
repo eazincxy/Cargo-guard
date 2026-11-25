@@ -262,6 +262,20 @@ def _extract_order_id(text: str) -> str:
     return match.group(0).upper() if match else ""
 
 
+def _extract_order_id_candidates(text: str) -> list[str]:
+    """候选订单号：完整 ORD-xxx 优先；否则把裸数字按 ORD- 前缀补齐，交给查库确认。
+
+    裸数字必须再经 load_order 命中才采用，避免把年份、金额等误当订单号。
+    """
+    text = text or ""
+    ids = [m.upper() for m in re.findall(r"ORD-\d{3,}", text, flags=re.I)]
+    if ids:
+        return list(dict.fromkeys(ids))
+    return list(dict.fromkeys(
+        f"ORD-{num}" for num in re.findall(r"(?<!\d)\d{4,}(?!\d)", text)
+    ))
+
+
 def load_order(order_id: str, runtime: Any) -> dict[str, Any]:
     """从项目 data.db 读取订单快照；查询失败返回空字典。"""
     if not order_id:
@@ -405,9 +419,16 @@ def load_memory_node(state: dict[str, Any], runtime: Any) -> dict[str, Any]:
         # 游客态：即使文本里出现订单号也不读取数据库订单
         order_id, order = "", {}
     else:
-        # 本轮显式提到的订单号优先；没提到时沿用本会话上一次的订单
-        order_id = _extract_order_id(query) or state.get("order_id", "")
-        order = runtime.load_order(order_id)
+        # 本轮显式提到的订单号优先（裸数字需查库命中才算）；没提到时沿用本会话上一次的订单
+        order_id, order = "", {}
+        for candidate in _extract_order_id_candidates(query)[:3]:
+            hit = runtime.load_order(candidate)
+            if hit:
+                order_id, order = candidate, hit
+                break
+        if not order_id:
+            order_id = state.get("order_id", "")
+            order = runtime.load_order(order_id)
     history = list(state.get("history", [])) + [{"role": "user", "content": query}]
 
     memories: list[str] = []

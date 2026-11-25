@@ -540,6 +540,25 @@ def test_multi_turn_context():
     assert cc2 == {"destination": "CN", "origin": "AU"}, cc2
     print("CONFIRMED_COUNTRIES_OK")
 
+    # c7) 裸订单号（1007）补齐 ORD- 前缀，且必须查库命中才采用
+    assert agent_act._extract_order_id_candidates("1007 我刚下单不久") == ["ORD-1007"]
+    assert agent_act._extract_order_id_candidates("ORD-1007 我刚下单不久") == ["ORD-1007"]
+    assert agent_act._extract_order_id_candidates("2026 年有什么新规") == ["ORD-2026"]
+
+    class _OrderOnlyRuntime:
+        CONFIG = type("C", (), {"enable_long_memory": False})()
+        LOGGER = agent.LOGGER
+
+        def load_order(self, order_id):
+            return {"order_id": order_id} if order_id == "ORD-1007" else {}
+
+    hit = agent_act.load_memory_node({"query": "1007 我刚下单不久"}, _OrderOnlyRuntime())
+    assert hit["order_id"] == "ORD-1007", hit
+    # 裸数字查不到订单时不得占用订单号
+    miss = agent_act.load_memory_node({"query": "2026 年有什么新规"}, _OrderOnlyRuntime())
+    assert miss["order_id"] == "", miss
+    print("BARE_ORDER_ID_OK")
+
     # d) 追问时放宽记忆相关度阈值，避免偏好类记忆被全部过滤
     user = _uid("relax")
     agent.save_user_memory(user, ["偏好币种：USD"])
