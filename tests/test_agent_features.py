@@ -521,6 +521,25 @@ def test_multi_turn_context():
     assert not agent_act._is_followup("我在日本买了一件衣服，想从中国退回澳大利亚，需要注意什么？", follow_hist)
     print("FOLLOWUP_SEARCH_OK")
 
+    # c6) 已确认的收货国/发货国要从历史累积，避免反复追问
+    hist_country = [
+        {"role": "assistant", "content": "请问您的收货地址是在澳大利亚吗？"},
+        {"role": "user", "content": "在中国"},
+        {"role": "assistant", "content": "请问商家是从哪个国家发货的？"},
+        {"role": "user", "content": "AU"},
+    ]
+    cc = agent_act.confirmed_countries({"history": hist_country})
+    assert cc == {"destination": "CN", "origin": "AU"}, cc
+    assert agent_act.stated_country_iso("AU") == "AU"
+    active_hist = [
+        {"role": "user", "content": "收货地址在中国"},
+        {"role": "assistant", "content": "好的"},
+        {"role": "user", "content": "商家从澳大利亚发货"},
+    ]
+    cc2 = agent_act.confirmed_countries({"history": active_hist})
+    assert cc2 == {"destination": "CN", "origin": "AU"}, cc2
+    print("CONFIRMED_COUNTRIES_OK")
+
     # d) 追问时放宽记忆相关度阈值，避免偏好类记忆被全部过滤
     user = _uid("relax")
     agent.save_user_memory(user, ["偏好币种：USD"])

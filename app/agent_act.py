@@ -567,6 +567,11 @@ def retrieve_node(state: dict[str, Any], runtime: Any) -> dict[str, Any]:
         country, state_code = stated, ""
     elif plan.get("country_code"):
         country = str(plan["country_code"]).upper()
+    if not country:
+        # 多轮确认过的收货国：避免已答过又重新检索成无边界的国家池
+        confirmed = confirmed_countries(state)
+        if confirmed["destination"]:
+            country, state_code = confirmed["destination"], ""
     query = plan.get("search_query") or _build_search_query(state)
     country = country or ""
 
@@ -687,7 +692,49 @@ def stated_country_iso(query: str) -> str:
     for hint, code in _COUNTRY_ISO.items():
         if hint in low:
             return code
+    # 买家只回两字母国码（如 “AU”）：要求独立成词，避免命中 restaurant 之类子串
+    for code in ("CN", "AU", "US", "UK", "GB", "JP", "KR", "FR", "DE", "TH"):
+        if re.search(rf"(?<![a-z]){code.lower()}(?![a-z])", low):
+            return code
     return ""
+
+
+_DEST_ASK_WORDS = ("收货", "收件", "寄到", "寄往", "送到")
+_ORIGIN_ASK_WORDS = ("发货", "发件", "商家从", "从哪个国家")
+
+
+def confirmed_countries(state: dict[str, Any]) -> dict[str, str]:
+    """从历史里「助手问收货国/发货国 → 买家答国家」的配对，累积已确认的国别。
+
+    多轮确认后避免重复追问同一项。
+    """
+    out = {"destination": "", "origin": ""}
+    history = state.get("history") or []
+    for index, message in enumerate(history):
+        text = str(message.get("content") or "")
+        if message.get("role") == "user":
+            # 买家主动陈述：“收货地址在中国”“商家从澳大利亚发货”
+            code = stated_country_iso(text)
+            if code:
+                if any(word in text for word in _DEST_ASK_WORDS):
+                    out["destination"] = code
+                if any(word in text for word in _ORIGIN_ASK_WORDS):
+                    out["origin"] = code
+            continue
+        if message.get("role") != "assistant" or index + 1 >= len(history):
+            continue
+        reply = history[index + 1]
+        if reply.get("role") != "user":
+            continue
+        code = stated_country_iso(str(reply.get("content") or ""))
+        if not code:
+            continue
+        ask = text
+        if any(word in ask for word in _DEST_ASK_WORDS):
+            out["destination"] = code
+        elif any(word in ask for word in _ORIGIN_ASK_WORDS):
+            out["origin"] = code
+    return out
 
 
 def mentions_us_state(query: str) -> bool:

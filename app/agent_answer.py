@@ -15,6 +15,7 @@ from app.agent_act import (
     _format_order,
     _format_retrieved,
     buyer_region,
+    confirmed_countries,
     mentions_us_state,
     stated_country_iso,
 )
@@ -416,6 +417,14 @@ def _llm_answer(state: dict[str, Any], runtime: Any) -> tuple[str, dict[str, int
                 f"【买家提到的国家】{mentioned} 只是购买地或提及地，不能当作收货国，"
                 "在买家确认收货地址前不得按该国法规给出结论；只能追问收货国与发货国。"
             )
+        confirmed = confirmed_countries(state)
+        if confirmed["destination"] or confirmed["origin"]:
+            lines = ["【已确认国别（买家此前已答复，禁止重复询问）】"]
+            if confirmed["destination"]:
+                lines.append(f"收货国：{confirmed['destination']}")
+            if confirmed["origin"]:
+                lines.append(f"发货国：{confirmed['origin']}")
+            system_blocks.append("\n".join(lines))
 
         if state.get("extra_context"):
             system_blocks.append("【补充背景】\n" + wrap_untrusted(state["extra_context"]))
