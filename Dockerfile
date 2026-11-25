@@ -26,11 +26,8 @@ RUN python -c "import app; from app.db import seed_demo_orders; seed_demo_orders
 EXPOSE 8501 8000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-    CMD curl -fsS http://localhost:8501/_stcore/health \
+    CMD curl -fsS "http://localhost:${PORT:-8501}/_stcore/health" \
         || curl -fsS http://localhost:8000/health || exit 1
 
-CMD ["streamlit", "run", "streamlit_app.py", \
-     "--server.address=0.0.0.0", \
-     "--server.port=8501", \
-     "--server.headless=true", \
-     "--browser.gatherUsageStats=false"]
+# 云平台（Render 等）通过 PORT 环境变量指定端口；本地默认 8501
+CMD ["sh", "-c", "streamlit run streamlit_app.py --server.address=0.0.0.0 --server.port=${PORT:-8501} --server.headless=true --browser.gatherUsageStats=false"]
