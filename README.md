@@ -1,5 +1,8 @@
 # CargoGuard · 跨境售后 RAG Agent
 
+[![CI](https://github.com/eazincxy/Cargo-guard/actions/workflows/ci.yml/badge.svg)](https://github.com/eazincxy/Cargo-guard/actions/workflows/ci.yml)
+[![Live Demo](https://img.shields.io/badge/demo-Streamlit%20Community%20Cloud-FF4B4B?logo=streamlit&logoColor=white)](https://cargo-guard-m6sopr3tsl3q3kua3d9hmz.streamlit.app/)
+
 > 一个面向跨境网购消费者的售后维权参谋：读得懂订单、找得到法条、说得清边界，且在不确定时敢说「我不知道」。
 
 🌐 **在线演示**：<https://cargo-guard-m6sopr3tsl3q3kua3d9hmz.streamlit.app/> ｜ 演示订单号：`ORD-1007`（输入「1007 我刚下单不久」即可触发完整链路）
@@ -7,6 +10,29 @@
 跨境售后是一个**信息不对称 + 法域碎片化 + 结果不可承诺**的场景。消费者通常不知道「我这件事归哪国法律管」「商家说的包邮不包税到底谁付」「商家跑路了钱还能不能要回来」；而大多数 AI 助手在这个场景里的典型失败方式不是答不上来，而是**过度自信地编造**——编一个不存在的法定退货期、编一个听起来很像的条款号、或者顺着用户的情绪承诺「一定能退」。
 
 这个项目围绕「如何让 Agent 在这个场景里既有用又不撒谎」来设计。下面不只写功能，也写每个设计背后的判断、踩过的坑和做过的取舍。
+
+## 架构总览
+
+Agent 用 LangGraph 组织为状态图，按「理解 → 取证 → 生成 → 自检」四阶段拆成九个节点；唯一的写操作（升级工单）在执行前 `interrupt` 挂起，等待人工审批后才 `Command(resume)` 恢复并落库。
+
+```mermaid
+flowchart TD
+    START([START]) --> intent[intent<br/>意图分类]
+    intent --> load_memory[load_memory<br/>注入长期记忆 + 读取订单]
+    load_memory --> summarize{summarize<br/>上下文超长?}
+    summarize -- 压缩 --> plan[plan<br/>ReAct 规划只读工具]
+    summarize -- 直接 --> plan
+    plan --> approval{命中写操作?}
+    approval -- 是 -->|interrupt 挂起| HITL[人工审批<br/>Command resume]
+    HITL --> retrieve[retrieve<br/>知识库检索]
+    approval -- 否 --> retrieve
+    retrieve --> answer[answer<br/>生成回答]
+    answer --> review[review<br/>独立合规校验]
+    review --> extract_memory[extract_memory<br/>结构化落记忆]
+    extract_memory --> END([END])
+```
+
+第 3 节有每个节点「为什么这样切」的详细说明。
 
 ---
 
@@ -226,7 +252,7 @@ if review_status != "passed":
 
 | 数据 | 形态 | 约束 |
 |---|---|---|
-| `kb/laws/*.yaml`（5 个国家） | 结构化法规条目 | 必须 `review_status: passed`；检索时受国家/州 tag 隔离 |
+| `kb/laws/*.yaml`（6 个国家：US / JP / KR / TH / DE / GB） | 结构化法规条目 | 必须 `review_status: passed`；检索时受国家/州 tag 隔离 |
 | `kb/facts.csv`（30 条） | `kind,tag,topic,正文` 四列 | 不强制审核字段；`rule-*` / `platform-*` 属跨国规则，**不受国家隔离** |
 
 `facts.csv` 的 `kind` 直接决定检索行为：`kind == "law"` 才参与国家过滤，`rule`（包邮≠包税、错发责任）与 `platform`（平台规则）必须对所有国家可召回，否则美国用户会检索不到「包邮不等于包税」这种跨国常识。
@@ -564,7 +590,7 @@ python auto_regress.py --dry-run                     # 仅校验用例结构
 
 诚实说明比粉饰缺点更有价值：
 
-- **知识库只覆盖 5 个国家**（US / JP / KR / TH / DE）。覆盖之外一律走「未覆盖」路径，这保证了安全，但也意味着对冰岛、巴西这类国家的用户帮助有限。扩充需要人工校对，不能靠模型生成。
+- **结构化法规只覆盖 6 个国家**（US / JP / KR / TH / DE / GB），另有中国出口 + 澳大利亚进口的跨境退运场景条目。覆盖之外一律走「未覆盖」路径，这保证了安全，但也意味着对冰岛、巴西这类国家的用户帮助有限。扩充需要人工校对，不能靠模型生成。
 - **Judge 也是模型**，判定存在抖动。缓解方式是结构化清单 + 只判不改，但没有彻底消除；同一用例偶尔会出现跨轮次的判定差异。
 - **法规时效靠人工守**：6 个月 / 12 个月的复核周期是流程约定，没有定时任务，也没有到期自动预警；`deprecated: true` 目前不会被代码自动排除，弃用条目必须改 `review_status` 才会真正失效（见 4.2）。
 - **准入依赖人工校对**，`review_status` 只保证"有人签过字"，不保证签得对——日本/泰国条目写反的那次事故就是流程执行到位、内容判断出错。

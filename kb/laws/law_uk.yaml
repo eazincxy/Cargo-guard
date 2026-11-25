@@ -1,0 +1,19 @@
+law_id: law-uk-01
+review_status: passed
+country: 英国
+country_code: GB
+law_name: 消费者合同（信息、取消与附加费用）条例 2013 与 消费者权利法 2015
+applicable_scope: 英国境内（英格兰、威尔士、苏格兰、北爱尔兰）远程线上购物、跨境直邮卖给英国消费者
+core_rule:
+  cooling_period: 14 天无理由取消权
+  start_from: 商品送达买家之日起算；服务或数字内容自合同成立之日起算
+  right: 远程销售合同法定 14 天取消权，无需理由；商家未以耐久媒介告知取消权利的，取消期延长至 12 个月
+  freight_rule: 退回运费原则上由买家承担，除非商家承诺承担或同意上门取件；商品存在质量问题的退货运费由商家承担
+exception:
+  - 数字内容已开始下载/播放且买家确认知晓会因此丧失取消权
+  - 按买家要求定制或特制的商品
+  - 易腐商品、密封卫生用品拆封后
+  - 已与其他商品混合无法分离的商品
+notice_requirement: 商家须在结算前以耐久媒介告知取消权、退回运费承担方与退款时限；未告知则取消期延长至 12 个月
+refund_deadline: 商家须在收到取消通知后 14 天内退款；买家退回商品后，商家可就不必要使用造成的减值扣减退款
+complaint_channel: Citizens Advice / Trading Standards（地方交易标准局）/ 平台介入

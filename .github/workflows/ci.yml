@@ -140,10 +140,17 @@ jobs:
         run: docker rm -f cargoguard-ui cargoguard-api || true
 
   e2e:
+    name: e2e 回归（LLM Judge，仅 main，需配置 API key）
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: tests
+    # 只在 main 分支推送时跑：PR 不消耗真实模型额度，也避免 judge 抖动卡住合并
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Judge 是模型、判定存在抖动（见 README §10）：e2e 失败不阻断绿，报告照常上传供人工查看
+    continue-on-error: true
     env:
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DEEPSEEK_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -152,6 +159,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
 
       - name: Install dependencies
         run: |
@@ -159,9 +167,16 @@ jobs:
           pip install -r requirements.txt
 
       - name: End-to-end regression with LLM judge
-        if: env.OPENAI_API_KEY != ''
+        if: env.OPENAI_API_KEY != '' || env.DEEPSEEK_API_KEY != ''
         run: python auto_regress.py
 
       - name: Skip notice (no API key configured)
-        if: env.OPENAI_API_KEY == ''
-        run: echo "OPENAI_API_KEY 未配置，跳过真实端到端回归（不再以 dry-run 冒充通过）"
+        if: env.OPENAI_API_KEY == '' && env.DEEPSEEK_API_KEY == ''
+        run: echo "未配置 OPENAI_API_KEY / DEEPSEEK_API_KEY，跳过真实端到端回归（不再以 dry-run 冒充通过）。在仓库 Settings → Secrets and variables → Actions 配置任一即可启用。"
+
+      - name: Upload regression report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-report
+          path: reports/*.md
