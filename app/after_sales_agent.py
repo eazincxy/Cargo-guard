@@ -871,8 +871,12 @@ def resume(
     approved: bool,
     reviewer: str = "operator",
     note: str = "",
+    timeout: float | None = None,
 ) -> dict[str, Any]:
-    """人工审批后恢复被挂起的会话：批准则执行写操作，拒绝则仅记录。"""
+    """人工审批后恢复被挂起的会话：批准则执行写操作，拒绝则仅记录。
+
+    恢复过程可能包含 LLM 调用，超过时限就返回 failed，避免界面一直停在提交中。
+    """
     config = {"configurable": {"thread_id": thread_id}}
     with _AGENT_LOCK:
         snapshot = GRAPH.get_state(config)
@@ -884,25 +888,86 @@ def resume(
             "error": "no_pending_action",
         }
 
+    limit = timeout if timeout is not None else float(
+        os.environ.get("SUPPORTPILOT_HITL_TIMEOUT", "120")
+    )
     user_id = values.get("user_id", "")
     order_id = values.get("order_id", "")
     started = time.perf_counter()
+    box: dict[str, Any] = {}
+
+    def _run() -> None:
+        try:
+            with _AGENT_LOCK:
+                box["result"] = GRAPH.invoke(
+                    Command(resume={
+                        "approved": bool(approved),
+                        "reviewer": reviewer,
+                        "note": note,
+                    }),
+                    config,
+                )
+        except Exception as exc:  # noqa: BLE001 - 需要对所有失败给出确定状态
+            box["error"] = exc
+
     with tracing.span("agent.hitl", thread_id=thread_id, approved=bool(approved)) as span:
-        with _AGENT_LOCK:
-            result = GRAPH.invoke(
-                Command(resume={
-                    "approved": bool(approved),
-                    "reviewer": reviewer,
-                    "note": note,
-                }),
-                config,
-            )
+        worker = threading.Thread(target=_run, daemon=True)
+        worker.start()
+        worker.join(limit)
         total_ms = round((time.perf_counter() - started) * 1000, 1)
         span.set_attribute("ms", total_ms)
+        if worker.is_alive():
+            span.set_attribute("status", "timeout")
+            LOGGER.warning(json_fields(
+                event="hitl_timeout",
+                thread_id=thread_id,
+                seconds=limit,
+            ))
+            return {
+                "answer": "",
+                "needs_approval": False,
+                "error": "approval_timeout",
+                "hitl": {
+                    "status": "failed",
+                    "summary": f"审批执行超过 {int(limit)} 秒仍未完成，已停止等待。",
+                },
+            }
+        if "error" in box:
+            exc = box["error"]
+            span.set_attribute("status", "failed")
+            LOGGER.warning(json_fields(
+                event="hitl_failed",
+                thread_id=thread_id,
+                error=type(exc).__name__,
+            ))
+            return {
+                "answer": "",
+                "needs_approval": False,
+                "error": "approval_failed",
+                "hitl": {
+                    "status": "failed",
+                    "summary": f"审批执行失败：{type(exc).__name__}",
+                },
+            }
+        result = box.get("result") or {}
         span.set_attribute("status", "approved" if approved else "rejected")
     if result.get("pending_action"):
         return _pending_response(thread_id, result)
     return _finalize(user_id, thread_id, order_id, result, total_ms)
+
+
+def approval_state(thread_id: str) -> dict[str, Any]:
+    """读取会话的审批状态；界面提交中断后用它区分“已执行”和“仍待审批”。"""
+    config = {"configurable": {"thread_id": thread_id}}
+    with _AGENT_LOCK:
+        snapshot = GRAPH.get_state(config)
+    values = dict(snapshot.values or {})
+    return {
+        "pending": bool(values.get("pending_action")),
+        "hitl": values.get("hitl") or {},
+        "answer": values.get("answer") or "",
+        "sources": act.format_sources(values.get("retrieved") or []),
+    }
 
 
 def chat_stream(

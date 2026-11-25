@@ -21,7 +21,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 COPY . .
 
 # 构建期初始化订单库，保证镜像开箱可用（data.db 不入镜像）
-RUN python -c "import app, seed_data"
+RUN python -c "import app; from app.db import seed_demo_orders; seed_demo_orders()"
 
 EXPOSE 8501 8000
 

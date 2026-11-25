@@ -691,35 +691,44 @@ def render_approval_card(approval):
     case_type = str(request.get("case_type") or "other")
     priority = str(request.get("priority") or "normal")
 
-    with st.container(key="cg_hitl_card", border=True):
-        title_col, status_col = st.columns([5, 1.5], vertical_alignment="center")
-        with title_col:
-            st.markdown(f"**{pack['hitl_title']}**")
-        with status_col:
-            st.markdown(f"**{pack.get('hitl_' + status, status)}**")
-
-        st.markdown(f"**{pack.get('hitl_tool_' + tool, tool)}**")
-        st.caption(pack["hitl_description"])
-        order_col, case_col, priority_col = st.columns(3)
-        with order_col:
-            st.markdown(f"**{pack['order_id']}**  \n{request.get('order_id') or '-'}")
-        with case_col:
-            st.markdown(
-                f"**{pack['hitl_case_label']}**  \n"
-                f"{pack.get('hitl_case_' + case_type, case_type)}"
-            )
-        with priority_col:
-            st.markdown(
-                f"**{pack['hitl_priority_label']}**  \n"
-                f"{pack.get('hitl_priority_' + priority, priority)}"
-            )
-        st.markdown(f"**{pack['hitl_reason_label']}**")
-        st.write(request.get("reason") or "-")
+    with st.container(key="cg_hitl_card", border=True) if status in {"pending", "processing"} else nullcontext():
+        def _render_details():
+            order_col, case_col, priority_col = st.columns(3)
+            with order_col:
+                st.markdown(f"**{pack['order_id']}**  \n{request.get('order_id') or '-'}")
+            with case_col:
+                st.markdown(
+                    f"**{pack['hitl_case_label']}**  \n"
+                    f"{pack.get('hitl_case_' + case_type, case_type)}"
+                )
+            with priority_col:
+                st.markdown(
+                    f"**{pack['hitl_priority_label']}**  \n"
+                    f"{pack.get('hitl_priority_' + priority, priority)}"
+                )
+            st.markdown(f"**{pack['hitl_reason_label']}**")
+            st.write(request.get("reason") or "-")
+            source = approval.get("source") or {}
+            if source.get("session_id") or source.get("user_id"):
+                st.caption(
+                    f"{pack['hitl_source_label']}："
+                    f"{source.get('session_id') or '-'}（{source.get('user_id') or '-'}）"
+                )
 
         if status in {"pending", "processing"}:
+            title_col, status_col = st.columns([5, 1.5], vertical_alignment="center")
+            with title_col:
+                st.markdown(f"**{pack['hitl_title']}**")
+            with status_col:
+                st.markdown(f"**{pack.get('hitl_' + status, status)}**")
+
+            st.markdown(f"**{pack.get('hitl_tool_' + tool, tool)}**")
+            st.caption(pack["hitl_description"])
+            _render_details()
+
             reviewer = st.text_input(
                 pack["hitl_reviewer_label"],
-                value=approval.get("reviewer") or "operator",
+                value=approval.get("reviewer") or ai_user_id(),
                 max_chars=40,
                 key=f"hitl_reviewer_{approval_id}",
                 disabled=not editable,
@@ -748,13 +757,23 @@ def render_approval_card(approval):
             if approved or rejected:
                 return approved, reviewer.strip() or "operator", note.strip()
         else:
-            reviewer = approval.get("reviewer") or "operator"
-            st.caption(f"{pack['hitl_reviewer_label']}：{reviewer}")
-            if approval.get("note"):
-                st.caption(f"{pack['hitl_note_label']}：{approval['note']}")
-            if approval.get("summary"):
-                st.markdown(f"**{pack['hitl_result_label']}**")
-                st.write(approval["summary"])
+            # 完成后外侧只留一个箭头入口，点开才显示审批详情，避免占用底部空间。
+            label = " · ".join(
+                part for part in (
+                    pack.get("hitl_" + status, status),
+                    request.get("order_id") or "",
+                    pack.get("hitl_tool_" + tool, tool),
+                ) if part
+            )
+            with st.container(key="cg_hitl_toggle"):
+                with st.popover("▸", help=label):
+                    _render_details()
+                    st.caption(f"{pack['hitl_reviewer_label']}：{approval.get('reviewer') or ai_user_id()}")
+                    if approval.get("note"):
+                        st.caption(f"{pack['hitl_note_label']}：{approval['note']}")
+                    if approval.get("summary"):
+                        st.markdown(f"**{pack['hitl_result_label']}**")
+                        st.write(approval["summary"])
     return None
 
 

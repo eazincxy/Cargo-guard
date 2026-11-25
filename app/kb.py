@@ -41,6 +41,15 @@ def _env(name):
                 key, _, val = line.partition("=")
                 if key.strip() == name:
                     return val.strip()
+    # 云端部署（如 Streamlit Community Cloud）把密钥放在 Secrets 面板，不在 .env 文件里
+    try:
+        import streamlit as st
+
+        secret = st.secrets.get(name)
+        if secret:
+            return str(secret).strip()
+    except Exception:
+        pass
     return None
 
 

@@ -37,8 +37,9 @@ def _resume_result(approved=True):
 
 
 @contextmanager
-def app_context(result=None):
+def app_context(result=None, state=None):
     history_file = os.path.join(tempfile.mkdtemp(dir=_TMP_DIR), "history.json")
+    state_result = state or {"pending": False, "hitl": {}, "answer": "", "sources": []}
 
     def fake_stream(**kwargs):
         request = {
@@ -60,7 +61,9 @@ def app_context(result=None):
 
     with mock.patch.object(components, "HISTORY_FILE", history_file), \
             mock.patch("app.after_sales_agent.chat_stream", side_effect=fake_stream) as stream_mock, \
-            mock.patch("app.after_sales_agent.resume") as resume_mock:
+            mock.patch("app.after_sales_agent.resume") as resume_mock, \
+            mock.patch("app.after_sales_agent.approval_state",
+                       side_effect=lambda *args, **kwargs: copy.deepcopy(state_result)):
         resume_mock.side_effect = lambda **kwargs: copy.deepcopy(
             result(kwargs) if callable(result) else (result or _resume_result(kwargs["approved"]))
         )
@@ -181,6 +184,42 @@ def test_session_isolation():
     print("STREAMLIT_HITL_SESSION_ISOLATION_OK")
 
 
+def test_processing_recovery_pending():
+    # 中断但仍待审批：恢复为可重试，且不自动重放写操作
+    with app_context(state={"pending": True, "hitl": {}, "answer": "", "sources": []}) \
+            as (at, _, resume_mock, _):
+        message = _send_pending(at)
+        approval = message["approval"]
+        approval["status"] = "processing"
+        _run(at)
+        assert approval["status"] == "pending"
+        assert resume_mock.call_count == 0
+        assert at.text_input(key="ai_text").disabled
+        _click_decision(at, message, approve=True)
+        assert resume_mock.call_count == 1
+    print("STREAMLIT_HITL_RECOVER_PENDING_OK")
+
+
+def test_processing_recovery_executed():
+    # 中断但后端已执行：回填真实结果，不再重复提交
+    executed = {
+        "pending": False,
+        "hitl": {"status": "approved", "summary": "已创建升级工单 #2"},
+        "answer": "已升级到平台客服，工单 #2 已创建。",
+        "sources": [],
+    }
+    with app_context(state=executed) as (at, _, resume_mock, _):
+        message = _send_pending(at)
+        message["approval"]["status"] = "processing"
+        _run(at)
+        assert message["approval"]["status"] == "approved"
+        assert message["approval"]["summary"] == "已创建升级工单 #2"
+        assert "已升级到平台客服" in message["content"]
+        assert resume_mock.call_count == 0
+        assert not at.text_input(key="ai_text").disabled
+    print("STREAMLIT_HITL_RECOVER_EXECUTED_OK")
+
+
 def test_language_packs():
     required = {
         "hitl_title", "hitl_pending", "hitl_processing", "hitl_approved",
@@ -200,6 +239,8 @@ def main():
     test_reject()
     test_stale_request()
     test_session_isolation()
+    test_processing_recovery_pending()
+    test_processing_recovery_executed()
     print("STREAMLIT_HITL_ALL_PASS")
 
 

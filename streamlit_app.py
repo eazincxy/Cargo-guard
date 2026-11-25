@@ -11,6 +11,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from app.llm import describe_attachments
+from app.after_sales_agent import approval_state as after_sales_approval_state
 from app.after_sales_agent import chat as after_sales_chat
 from app.after_sales_agent import chat_stream as after_sales_chat_stream
 from app.after_sales_agent import resume as after_sales_resume
@@ -230,8 +231,9 @@ def ack_message(key, **fmt):
 
 def load_orders():
     try:
-        from app.db import get_connection, init_db
+        from app.db import get_connection, init_db, seed_demo_orders
         init_db()
+        seed_demo_orders()
         conn = get_connection()
         rows = conn.execute(
             "SELECT order_id, seller_name, merchant_avatar, product_name, product_image, "
@@ -439,6 +441,51 @@ _PROBLEM_REPORT_WORDS = (
 def _is_problem_report(text):
     low = (text or "").lower()
     return any(w.lower() in low for w in _PROBLEM_REPORT_WORDS)
+
+
+def _apply_approval_result(message, result, approved):
+    """把审批恢复结果写回消息：再次待审批、失效或最终回答。"""
+    lang_pack = T[st.session_state.lang]
+    approval = message["approval"]
+    if result.get("needs_approval"):
+        nxt = result.get("approval") or {}
+        approval["request"] = nxt
+        approval["thread_id"] = nxt.get("thread_id") or approval["thread_id"]
+        approval["status"] = "pending"
+        message["content"] = result.get("answer") or ""
+        message["sources"] = []
+        return
+    if result.get("error") == "no_pending_action":
+        approval["status"] = "stale"
+        message["content"] = lang_pack["hitl_stale_message"]
+        message["sources"] = []
+        return
+    if result.get("error") in {"approval_timeout", "approval_failed"}:
+        approval["status"] = "failed"
+        approval["summary"] = (result.get("hitl") or {}).get("summary") or ""
+        message["content"] = lang_pack["hitl_timeout"]
+        message["sources"] = []
+        return
+    hitl = result.get("hitl") or {}
+    approval["status"] = hitl.get("status") or ("approved" if approved else "rejected")
+    approval["summary"] = hitl.get("summary") or ""
+    if result.get("network_error"):
+        reply = lang_pack["network_error"]
+    else:
+        reply = result.get("answer") or lang_pack["ai_fallback"]
+    reply = strip_self_disclaimer(reply)
+    source_text = next(
+        (
+            m.get("content", "")
+            for m in reversed(st.session_state.ai_messages)
+            if m.get("role") == "user"
+        ),
+        "",
+    )
+    if _is_problem_report(source_text):
+        reply += "\n\n" + lang_pack["disclaimer"]
+    message["content"] = reply
+    message["sources"] = result.get("sources") or []
 
 
 # =========================================================
@@ -839,6 +886,41 @@ st.markdown("""
     }
     .st-key-cg_chat_composer [data-testid="stPopover"] > div > button:hover {
         background: #f3f6fb !important;
+    }
+    /* 完成态审批：箭头去掉圆形按钮样式，贴左显示，几乎不占高度 */
+    .st-key-cg_hitl_toggle {
+        width: fit-content !important;
+        min-height: 0 !important;
+        margin: -2px 0 -4px 2px !important;
+        padding: 0 !important;
+    }
+    .st-key-cg_hitl_toggle [data-testid="stPopover"] button[data-testid="stPopoverButton"],
+    .st-key-cg_hitl_toggle button[data-testid="stPopoverButton"],
+    .st-key-cg_hitl_toggle button {
+        width: auto !important;
+        height: 16px !important;
+        min-height: 0 !important;
+        padding: 0 !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        color: #9ca3af !important;
+        font-size: 14px !important;
+        line-height: 1 !important;
+    }
+    .st-key-cg_hitl_toggle button[data-testid="stPopoverButton"]:hover,
+    .st-key-cg_hitl_toggle button:hover {
+        background: transparent !important;
+        border: 0 !important;
+        color: #111827 !important;
+    }
+    .st-key-cg_hitl_toggle button p,
+    .st-key-cg_hitl_toggle button span,
+    .st-key-cg_hitl_toggle button div {
+        font-size: 14px !important;
+        line-height: 1 !important;
+        margin: 0 !important;
     }
     /* 聊天页撑满视口、输入框贴底的规则在 render_chat_composer 中按页注入 */
     [data-testid="stMain"] .block-container,
@@ -1276,12 +1358,28 @@ if st.session_state.page == "ai":
         ),
         None,
     )
+    _approval = _approval_message["approval"] if _approval_message else None
+    if _approval and _approval.get("status") == "processing":
+        # 提交被中断（刷新、断线或手动停止）时以断点库为准恢复：
+        # 已执行则回填真实结果，仍待审批才允许重试，不存在则标记失效。
+        _state = after_sales_approval_state(_approval.get("thread_id", ""))
+        _hitl = _state.get("hitl") or {}
+        if _hitl.get("status") in {"approved", "rejected", "failed"}:
+            _apply_approval_result(
+                _approval_message, _state, _hitl.get("status") == "approved"
+            )
+        elif _state.get("pending"):
+            _approval["status"] = "pending"
+            st.warning(T[st.session_state.lang]["hitl_error"])
+        else:
+            _approval["status"] = "stale"
+            _approval_message["content"] = T[st.session_state.lang]["hitl_stale_message"]
+            _approval_message["sources"] = []
+        save_ai_sessions()
     _approval_pending = bool(
-        _approval_message
-        and _approval_message["approval"].get("status") in {"pending", "processing"}
+        _approval and _approval.get("status") in {"pending", "processing"}
     )
-    if _approval_message:
-        _approval = _approval_message["approval"]
+    if _approval:
         with st.container(key="cg_chat_composer"):
             _decision = render_approval_card(_approval)
             user_input, send_clicked, attachments = render_chat_composer(
@@ -1294,6 +1392,8 @@ if st.session_state.page == "ai":
                 "reviewer": _reviewer,
                 "note": _note,
             })
+            # 先落盘：提交耗时较长，断线时下次启动才能据此恢复真实结果。
+            save_ai_sessions()
             try:
                 with st.spinner(T[st.session_state.lang]["hitl_processing"]):
                     _resume_result = after_sales_resume(
@@ -1302,40 +1402,7 @@ if st.session_state.page == "ai":
                         reviewer=_reviewer,
                         note=_note,
                     )
-                if _resume_result.get("needs_approval"):
-                    _next_request = _resume_result.get("approval") or {}
-                    _approval["request"] = _next_request
-                    _approval["thread_id"] = _next_request.get("thread_id") or _approval["thread_id"]
-                    _approval["status"] = "pending"
-                    _approval_message["content"] = _resume_result.get("answer") or ""
-                    _approval_message["sources"] = []
-                elif _resume_result.get("error") == "no_pending_action":
-                    _approval["status"] = "stale"
-                    _approval_message["content"] = T[st.session_state.lang]["hitl_stale_message"]
-                    _approval_message["sources"] = []
-                else:
-                    _hitl = _resume_result.get("hitl") or {}
-                    _approval["status"] = _hitl.get("status") or (
-                        "approved" if _approved else "rejected"
-                    )
-                    _approval["summary"] = _hitl.get("summary") or ""
-                    if _resume_result.get("network_error"):
-                        _reply = T[st.session_state.lang]["network_error"]
-                    else:
-                        _reply = _resume_result.get("answer") or T[st.session_state.lang]["ai_fallback"]
-                    _reply = strip_self_disclaimer(_reply)
-                    _source_text = next(
-                        (
-                            m.get("content", "")
-                            for m in reversed(st.session_state.ai_messages)
-                            if m.get("role") == "user"
-                        ),
-                        "",
-                    )
-                    if _is_problem_report(_source_text):
-                        _reply += "\n\n" + T[st.session_state.lang]["disclaimer"]
-                    _approval_message["content"] = _reply
-                    _approval_message["sources"] = _resume_result.get("sources") or []
+                _apply_approval_result(_approval_message, _resume_result, _approved)
                 save_ai_sessions()
             except Exception:
                 # 不自动重放写操作；恢复 pending 后由用户明确重试。
@@ -1451,6 +1518,11 @@ if st.session_state.page == "ai":
                     "session_id": st.session_state.ai_active,
                     "thread_id": approval_request.get("thread_id") or ai_thread_id(),
                     "request": approval_request,
+                    # 记录发起审批的会话与账号，便于审计与跨会话排查
+                    "source": {
+                        "session_id": st.session_state.ai_active,
+                        "user_id": ai_user_id(),
+                    },
                     "status": "pending",
                 }
             st.session_state.ai_messages.append(_ai_message)

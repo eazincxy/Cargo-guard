@@ -625,7 +625,7 @@ def test_hitl_approval():
     writes = []
     original_writer = tools._write_work_order
     tools._write_work_order = lambda order_id, case_type, priority: (
-        writes.append((order_id, case_type, priority)) or 9001
+        writes.append((order_id, case_type, priority)) or (9001, True)
     )
 
     fake_order = {
@@ -709,6 +709,154 @@ def test_hitl_approval():
             print("HITL_NO_PENDING_OK")
     finally:
         tools._write_work_order = original_writer
+
+
+def test_hitl_resume_timeout():
+    """resume 超时或异常时返回 failed，避免界面一直停在提交中。"""
+    import time as _time
+    import types
+
+    original = agent.GRAPH
+
+    class _SlowGraph:
+        def get_state(self, config):
+            return types.SimpleNamespace(values={
+                "pending_action": {"tool": "create_escalation"},
+                "user_id": "timeout_user",
+                "order_id": "ORD-1001",
+            })
+
+        def invoke(self, *args, **kwargs):
+            _time.sleep(1.2)
+            return {}
+
+    class _BrokenGraph(_SlowGraph):
+        def invoke(self, *args, **kwargs):
+            raise RuntimeError("llm down")
+
+    try:
+        agent.GRAPH = _SlowGraph()
+        timed = agent.resume("hitl_timeout_thread", approved=True, timeout=0.2)
+        assert timed.get("error") == "approval_timeout", timed
+        assert timed["hitl"]["status"] == "failed", timed
+        print("HITL_TIMEOUT_OK")
+
+        agent.GRAPH = _BrokenGraph()
+        failed = agent.resume("hitl_failed_thread", approved=True, timeout=5)
+        assert failed.get("error") == "approval_failed", failed
+        assert failed["hitl"]["status"] == "failed", failed
+        print("HITL_FAILED_OK")
+    finally:
+        agent.GRAPH = original
+
+
+def test_work_order_dedupe():
+    """同订单同类型重复升级复用未关闭工单，不同订单或类型仍新建。"""
+    import os as _os
+    import tempfile
+
+    import app.db as db
+    import app.agent_tools as tools
+
+    original_path = db.DB_PATH
+    fd, path = tempfile.mkstemp(suffix=".db")
+    _os.close(fd)
+    try:
+        db.DB_PATH = path
+        db.init_db()
+        conn = db.get_connection()
+        try:
+            indexes = {row[1] for row in conn.execute("PRAGMA index_list('work_orders')")}
+        finally:
+            conn.close()
+        assert "idx_work_orders_active" in indexes, indexes
+        first, created_first = tools._write_work_order("ORD-DEDUP", "product", "high")
+        second, created_second = tools._write_work_order("ORD-DEDUP", "product", "normal")
+        assert created_first is True and created_second is False
+        assert first == second, (first, second)
+
+        other_type, created_type = tools._write_work_order("ORD-DEDUP", "refund", "normal")
+        assert created_type is True and other_type != first
+        print("WORK_ORDER_DEDUPE_OK")
+    finally:
+        db.DB_PATH = original_path
+        try:
+            _os.remove(path)
+        except OSError:
+            pass
+
+
+def test_work_order_concurrent():
+    """并发审批同时建单：唯一索引保证只落一条，其余复用同一工单。"""
+    import os as _os
+    import tempfile
+    import threading
+
+    import app.agent_tools as tools
+    import app.db as db
+
+    original_path = db.DB_PATH
+    fd, path = tempfile.mkstemp(suffix=".db")
+    _os.close(fd)
+    try:
+        db.DB_PATH = path
+        db.init_db()
+        results, errors = [], []
+        barrier = threading.Barrier(6)
+
+        def worker():
+            try:
+                barrier.wait(timeout=5)
+                results.append(tools._write_work_order("ORD-RACE", "refund", "normal"))
+            except Exception as exc:  # noqa: BLE001 - 测试需要收集全部失败
+                errors.append(exc)
+
+        threads = [threading.Thread(target=worker) for _ in range(6)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(10)
+
+        assert not errors, errors
+        assert len(results) == 6, results
+        assert sum(1 for _, created in results if created) == 1, results
+        assert len({wid for wid, _ in results}) == 1, results
+        print("WORK_ORDER_CONCURRENT_OK")
+    finally:
+        db.DB_PATH = original_path
+        try:
+            _os.remove(path)
+        except OSError:
+            pass
+
+
+def test_demo_orders_seed():
+    """空库自动灌入演示订单，公网部署无需手工初始化；重复调用不再写入。"""
+    import os as _os
+    import tempfile
+
+    import app.db as db
+
+    original_path = db.DB_PATH
+    fd, path = tempfile.mkstemp(suffix=".db")
+    _os.close(fd)
+    try:
+        db.DB_PATH = path
+        db.init_db()
+        assert db.seed_demo_orders() == 8
+        assert db.seed_demo_orders() == 0
+        conn = db.get_connection()
+        try:
+            assert conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0] == 8
+        finally:
+            conn.close()
+        print("DEMO_ORDERS_SEED_OK")
+    finally:
+        db.DB_PATH = original_path
+        try:
+            _os.remove(path)
+        except OSError:
+            pass
 
 
 def test_tracing_spans():
@@ -862,6 +1010,10 @@ def main():
     test_tool_planning()
     test_react_loop()
     test_hitl_approval()
+    test_hitl_resume_timeout()
+    test_work_order_dedupe()
+    test_work_order_concurrent()
+    test_demo_orders_seed()
     test_multi_turn_context()
     test_tracing_spans()
     test_redteam_guards()

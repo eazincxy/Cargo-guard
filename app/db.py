@@ -1,9 +1,11 @@
+import json
 import os
 import sqlite3
 
 # 绝对路径：避免服务以不同工作目录启动时连到空库；测试可用 SUPPORTPILOT_DB 指向临时库
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.environ.get("SUPPORTPILOT_DB") or os.path.join(ROOT, "data.db")
+DEMO_ORDERS_PATH = os.path.join(ROOT, "data", "demo_orders.json")
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -46,6 +48,32 @@ def _migrate(conn):
     conn.commit()
 
 
+def _dedupe_work_orders(conn):
+    """合并历史重复工单：同订单同类型只保留最新一条未关闭记录，其余置为 Closed。
+
+    唯一索引建立前必须先跑一次；之后每次启动都是幂等空操作。
+    """
+    conn.execute("""
+        UPDATE work_orders
+        SET status = 'Closed'
+        WHERE COALESCE(status, 'Open') != 'Closed'
+          AND id NOT IN (
+              SELECT MAX(id) FROM work_orders
+              WHERE COALESCE(status, 'Open') != 'Closed'
+              GROUP BY order_id, case_type
+          )
+    """)
+
+
+def _ensure_work_order_unique(conn):
+    """未关闭工单部分唯一索引：并发审批也不会重复建单。"""
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_work_orders_active
+        ON work_orders(order_id, case_type)
+        WHERE COALESCE(status, 'Open') != 'Closed'
+    """)
+
+
 def normalize_order_totals(conn):
     """保证订单金额勾稽：订单总额 = 商品单价 × 数量 + 运费。
 
@@ -63,6 +91,28 @@ def normalize_order_totals(conn):
           AND ABS(COALESCE(total_amount, 0)
                   - (quantity * unit_price + COALESCE(shipping_fee, 0))) > 0.01
     """)
+
+
+def seed_demo_orders() -> int:
+    """空库首次启动时灌入演示订单，保证公网部署开箱可演示；已有数据时不做修改。"""
+    conn = get_connection()
+    try:
+        if conn.execute("SELECT COUNT(*) FROM orders").fetchone()[0]:
+            return 0
+        with open(DEMO_ORDERS_PATH, encoding="utf-8") as f:
+            rows = json.load(f)
+        for row in rows:
+            cols = list(row)
+            conn.execute(
+                f"INSERT OR REPLACE INTO orders ({','.join(cols)}) "
+                f"VALUES ({','.join('?' for _ in cols)})",
+                [row[col] for col in cols],
+            )
+        normalize_order_totals(conn)
+        conn.commit()
+        return len(rows)
+    finally:
+        conn.close()
 
 
 def init_db():
@@ -162,5 +212,7 @@ def init_db():
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
         )
     """)
+    _dedupe_work_orders(conn)
+    _ensure_work_order_unique(conn)
     conn.commit()
     conn.close()

@@ -9,6 +9,7 @@
 
 from __future__ import annotations
 
+import sqlite3
 import time
 from typing import Any, Callable
 
@@ -201,28 +202,51 @@ def _search(args: dict[str, Any], state: dict[str, Any], search_fn) -> dict[str,
     return {"query": query, "retrieved": list(hits)}
 
 
-def _write_work_order(order_id: str, case_type: str, priority: str) -> int:
-    """写入升级工单；返回工单号。测试可替换本函数以避免落库。"""
+def _write_work_order(order_id: str, case_type: str, priority: str) -> tuple[int, bool]:
+    """写入升级工单，返回 (工单号, 是否新建)。
+
+    同一订单、同一类型已有未关闭工单时直接复用，避免重复升级产生多条工单。
+    并发审批同时插入时由部分唯一索引兜底，回查后复用已存在工单。
+    测试可替换本函数以避免落库。
+    """
     from app.db import get_connection
 
+    normalized_case = case_type.capitalize() if case_type else "Other"
+    active_sql = """
+        SELECT id FROM work_orders
+        WHERE order_id = ? AND case_type = ?
+          AND COALESCE(status, 'Open') != 'Closed'
+        ORDER BY id DESC LIMIT 1
+    """
     conn = get_connection()
     try:
+        existing = conn.execute(active_sql, (order_id, normalized_case)).fetchone()
+        if existing:
+            return int(existing[0]), False
         # 与手动建单接口保持同一套枚举写法（Open / High / Product…），避免前端展示不一致
-        cur = conn.execute(
-            """
-            INSERT INTO work_orders (order_id, priority, case_type, assignee, status)
-            VALUES (?, ?, ?, ?, ?)
-            """,
-            (
-                order_id,
-                priority.capitalize() if priority else "Normal",
-                case_type.capitalize() if case_type else "Other",
-                "Platform Review",
-                "Open",
-            ),
-        )
-        conn.commit()
-        return int(cur.lastrowid or 0)
+        try:
+            cur = conn.execute(
+                """
+                INSERT INTO work_orders (order_id, priority, case_type, assignee, status)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    order_id,
+                    priority.capitalize() if priority else "Normal",
+                    normalized_case,
+                    "Platform Review",
+                    "Open",
+                ),
+            )
+            conn.commit()
+            return int(cur.lastrowid or 0), True
+        except sqlite3.IntegrityError:
+            # 另一个审批已抢先建单：唯一索引拦下本次插入，直接复用
+            conn.rollback()
+            row = conn.execute(active_sql, (order_id, normalized_case)).fetchone()
+            if row:
+                return int(row[0]), False
+            raise
     finally:
         conn.close()
 
@@ -237,7 +261,7 @@ def _escalate(args: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
     reason = str(args.get("reason") or "").strip()[:100]
     if not reason:
         raise ValueError("升级原因不能为空")
-    work_order_id = _write_work_order(order_id, case_type, priority)
+    work_order_id, created = _write_work_order(order_id, case_type, priority)
     return {
         "work_order_id": work_order_id,
         "order_id": order_id,
@@ -245,6 +269,7 @@ def _escalate(args: dict[str, Any], state: dict[str, Any]) -> dict[str, Any]:
         "priority": priority,
         "reason": reason,
         "status": "open",
+        "created": created,
     }
 
 
@@ -272,8 +297,9 @@ def _summarize(name: str, result: dict[str, Any]) -> str:
             f"最新信息 {str(info.get('logistics_info') or '无')[:80]}"
         )
     if name == "create_escalation":
+        prefix = "已创建升级工单" if result.get("created") else "已存在同订单同类型工单，复用"
         return (
-            f"已创建升级工单 #{result.get('work_order_id')}；"
+            f"{prefix} #{result.get('work_order_id')}；"
             f"订单 {result.get('order_id')}；类型 {result.get('case_type')}；"
             f"优先级 {result.get('priority')}"
         )

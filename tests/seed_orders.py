@@ -1,4 +1,4 @@
-"""把 tests/fixtures/orders.json 灌入 data.db，供 CI 回归使用。
+"""把 data/demo_orders.json 灌入 data.db，供 CI 与干净环境回归使用。
 
 data.db 被 .gitignore 排除，干净环境需要先执行本脚本，Agent 才能读到订单事实。
 幂等：按 order_id 覆盖写入。
@@ -16,7 +16,7 @@ sys.path.insert(0, ROOT)
 
 from app.db import get_connection, init_db, normalize_order_totals  # noqa: E402
 
-FIXTURE = os.path.join(ROOT, "tests", "fixtures", "orders.json")
+FIXTURE = os.path.join(ROOT, "data", "demo_orders.json")
 
 
 def main() -> None:
