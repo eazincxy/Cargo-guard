@@ -511,6 +511,16 @@ def test_multi_turn_context():
     assert any("澳大利亚" in f for f in agent_act._rule_extract("我住在澳大利亚，想退货"))
     print("RESIDENCE_MEMORY_OK")
 
+    # c5) 回答助手上一问的陈述句要算追问，检索才会带上上一轮问题
+    follow_hist = [
+        {"role": "user", "content": "我在日本买的衣服，想从中国退回澳大利亚，需要注意什么？"},
+        {"role": "assistant", "content": "请问收货地址是在澳大利亚吗？"},
+        {"role": "user", "content": "是的，收货地址在澳大利亚，商家从日本发货。"},
+    ]
+    assert agent_act._is_followup("是的，收货地址在澳大利亚，商家从日本发货。", follow_hist)
+    assert not agent_act._is_followup("我在日本买了一件衣服，想从中国退回澳大利亚，需要注意什么？", follow_hist)
+    print("FOLLOWUP_SEARCH_OK")
+
     # d) 追问时放宽记忆相关度阈值，避免偏好类记忆被全部过滤
     user = _uid("relax")
     agent.save_user_memory(user, ["偏好币种：USD"])

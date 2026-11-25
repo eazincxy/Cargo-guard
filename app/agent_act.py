@@ -343,12 +343,24 @@ _FOLLOWUP_HINTS = (
 )
 
 
-def _is_followup(query: str) -> bool:
-    """判断是否为多轮追问：含指代词或明显过短，需要借助上文才能准确检索。"""
+_QUESTION_HINTS = ("怎么办", "怎么", "如何", "什么", "为什么", "吗", "能不能", "可不可以", "是否", "哪")
+
+
+def _is_followup(query: str, history=None) -> bool:
+    """判断是否为多轮追问：含指代词、明显过短，或像是在回答助手上一轮的提问。"""
     text = (query or "").strip()
     if not text:
         return False
-    return len(text) <= 8 or any(hint in text for hint in _FOLLOWUP_HINTS)
+    if len(text) <= 8 or any(hint in text for hint in _FOLLOWUP_HINTS):
+        return True
+    if len(text) > 40 or any(hint in text for hint in _QUESTION_HINTS):
+        return False
+    # 本轮是陈述式回答、且上一轮助手在提问：检索需要带上上一轮问题才有上下文
+    for item in reversed(list(history or [])):
+        if item.get("role") == "assistant":
+            reply = str(item.get("content", ""))
+            return "？" in reply or "?" in reply
+    return False
 
 
 def _previous_user_message(state: dict[str, Any]) -> str:
@@ -365,7 +377,7 @@ def _build_search_query(state: dict[str, Any]) -> str:
     """把本轮问题、订单关键字段、记忆中的国家/币种拼成检索语句。"""
     query = state.get("query", "")
     parts = [query]
-    if _is_followup(query):
+    if _is_followup(query, state.get("history")):
         previous = _previous_user_message(state)
         if previous:
             parts.append(previous)
@@ -406,7 +418,7 @@ def load_memory_node(state: dict[str, Any], runtime: Any) -> dict[str, Any]:
             records = runtime.load_memory_records(state.get("user_id", ""))
             memory_total = sum(1 for r in records if not r.get("expired"))
             memories = runtime.select_relevant_memories(
-                records, query, state.get("intent", ""), relax=_is_followup(query)
+                records, query, state.get("intent", ""), relax=_is_followup(query, state.get("history"))
             )
         except Exception as exc:
             memory_error = f"{type(exc).__name__}: {exc}"
