@@ -554,6 +554,11 @@ st.markdown("""
         margin: 0;
     }
 
+    /* 中文统一走无衬线字体：避免 Windows/英文环境下回退到宋体，字变细、字距显宽 */
+    .cg-chat-scroll, .cg-chat-scroll *, .chat-scroll, .chat-scroll * {
+        font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", sans-serif;
+    }
+
     .chat-header {
         display: flex;
         align-items: center;
