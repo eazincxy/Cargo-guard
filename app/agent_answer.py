@@ -520,7 +520,7 @@ def _llm_answer(state: dict[str, Any], runtime: Any) -> tuple[str, dict[str, int
         messages[-1]["content"] += (
             f"\n\n（语言要求：请全程使用「{reply_language}」回答，不要使用其他语言。）"
         )
-    return runtime._call_llm(messages, temperature=0.2, timeout=120, purpose=f"answer:{intent}")
+    return runtime._call_llm(messages, temperature=0.1, timeout=120, purpose=f"answer:{intent}")
 
 
 def answer_node(state: dict[str, Any], runtime: Any) -> dict[str, Any]:

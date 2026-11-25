@@ -135,7 +135,7 @@ def chat(system: str, user: str, model: str) -> str:
             {"role": "system", "content": system},
             {"role": "user", "content": user},
         ],
-        "temperature": 0.2,
+        "temperature": 0,
     }
     url = f"{base_url()}/chat/completions"
     last_error: Exception | None = None
