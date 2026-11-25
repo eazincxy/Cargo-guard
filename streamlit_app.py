@@ -23,6 +23,10 @@ from ui.catalog import (
 
 st.set_page_config(page_title="CargoGuard", layout="wide")
 
+# 公开 Demo 的成本防护：单条消息最大字符数，超出即截断，
+# 避免有人粘贴超长文本放大 prompt token 消耗（每次对话都会带检索上下文）。
+MAX_INPUT_CHARS = 2000
+
 from ui.html import (
     fmt_datetime, localize_status, order_views_payload, ux,
     _identity_row, _merchant_avatar_html,
@@ -1424,6 +1428,10 @@ if st.session_state.page == "ai":
     if send_clicked and not _approval_pending and (user_input.strip() or attachments):
         lang_pack = T[st.session_state.lang]
         text = user_input.strip()
+        # 超长输入截断（公开 Demo 成本防护）：截断后再进入意图识别与 Agent
+        input_truncated = len(text) > MAX_INPUT_CHARS
+        if input_truncated:
+            text = text[:MAX_INPUT_CHARS]
         is_rate_query = is_exchange_rate_query(text) if text else False
         order_id = resolve_order_id(text, orders) if text else None
         explicit_ref = re.search(r"ORD-\d{3,}", text, flags=re.I) if text else None
@@ -1450,6 +1458,8 @@ if st.session_state.page == "ai":
             {"role": "user", "content": text, "attachments": attachments, "ts": _now_ts()}
         )
         touch_ai_title(text)
+        if input_truncated:
+            st.warning(lang_pack["input_too_long"].format(limit=MAX_INPUT_CHARS))
         _draw_ai_chat(live_status=lang_pack.get("thinking", "Thinking…"))
 
         try:
