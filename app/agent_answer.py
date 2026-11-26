@@ -393,6 +393,28 @@ def _followup_context(state: dict[str, Any]) -> str:
     return ""
 
 
+def _order_for_answer(state: dict[str, Any], runtime: Any) -> dict[str, Any]:
+    """回答侧取订单：状态里没有时，从历史里找出订单号回查一次。
+
+    多轮会话中断点可能丢失，但历史里仍留着订单号；此时若不回查，
+    回答节点会误以为订单未加载，从而重复追问收货国/发货国。
+    """
+    order = state.get("order") or {}
+    if order:
+        return order
+    for message in reversed(state.get("history") or []):
+        match = re.search(r"ORD-\d{3,}", str(message.get("content") or ""), re.I)
+        if not match:
+            continue
+        try:
+            hit = runtime.load_order(match.group(0).upper())
+        except Exception:
+            hit = None
+        if hit:
+            return hit
+    return {}
+
+
 def _llm_answer(state: dict[str, Any], runtime: Any) -> tuple[str, dict[str, int]]:
     """按意图拼装系统提示词并调用模型；闲聊不注入业务上下文。"""
     intent = state.get("intent", "")
@@ -411,7 +433,9 @@ def _llm_answer(state: dict[str, Any], runtime: Any) -> tuple[str, dict[str, int
             f"仅订单号、商品名、物流单号、专有名词可保留原文。"
         ))
 
+    country_lock = ""
     if intent != CHITCHAT:
+        order = _order_for_answer(state, runtime)
         # 语言强制生效时，屏蔽与当前语言冲突的记忆条目（如“沟通语言：英文”）
         memories = [
             m for m in (state.get("memories") or [])
@@ -423,12 +447,12 @@ def _llm_answer(state: dict[str, Any], runtime: Any) -> tuple[str, dict[str, int
         if state.get("summary"):
             system_blocks.append("【早期对话摘要】\n" + state["summary"])
 
-        system_blocks.append("【订单信息】\n" + _format_order(state.get("order") or {}))
+        system_blocks.append("【订单信息】\n" + _format_order(order))
 
         stated = _stated_destination(state.get("query") or "")
         mentioned = stated_country_iso(state.get("query") or "")
         if stated:
-            order_cc, _ = buyer_region((state.get("order") or {}).get("shipping_address") or "")
+            order_cc, _ = buyer_region(order.get("shipping_address") or "")
             note = [f"【买家本轮说明的收货国家】{stated}（以本轮陈述为准，法规必须按该国适用）"]
             if order_cc and order_cc.upper() != stated:
                 note.append(
@@ -457,7 +481,6 @@ def _llm_answer(state: dict[str, Any], runtime: Any) -> tuple[str, dict[str, int
                 lines.append(f"发货国：{confirmed['origin']}")
             system_blocks.append("\n".join(lines))
 
-        order = state.get("order") or {}
         order_dest, _ = buyer_region(order.get("shipping_address") or "")
         order_origin, _ = buyer_region(order.get("origin_address") or "")
         if order_dest or order_origin:
@@ -467,6 +490,15 @@ def _llm_answer(state: dict[str, Any], runtime: Any) -> tuple[str, dict[str, int
             if order_origin:
                 lines.append(f"发货国：{str(order_origin).upper()}")
             system_blocks.append("\n".join(lines))
+            parts = []
+            if order_dest:
+                parts.append(f"收货国 {str(order_dest).upper()}")
+            if order_origin:
+                parts.append(f"发货国 {str(order_origin).upper()}")
+            country_lock = (
+                "（本轮订单已确证" + "、".join(parts)
+                + "，收发货地址是最基本的订单信息：禁止再询问收货国/发货国或订单号，直接按此作答。）"
+            )
 
         if state.get("extra_context"):
             system_blocks.append("【补充背景】\n" + wrap_untrusted(state["extra_context"]))
@@ -516,10 +548,14 @@ def _llm_answer(state: dict[str, Any], runtime: Any) -> tuple[str, dict[str, int
     ]
     # 语言要求同时贴近生成位置提示一次：仅靠系统提示时，中文历史会明显带偏输出语言。
     # 这里只改本次调用内容，不写回历史/摘要。
-    if reply_language and messages and messages[-1].get("role") == "user":
-        messages[-1]["content"] += (
-            f"\n\n（语言要求：请全程使用「{reply_language}」回答，不要使用其他语言。）"
-        )
+    if messages and messages[-1].get("role") == "user":
+        extras: list[str] = []
+        if reply_language:
+            extras.append(f"（语言要求：请全程使用「{reply_language}」回答，不要使用其他语言。）")
+        if country_lock:
+            extras.append(country_lock)
+        if extras:
+            messages[-1]["content"] += "\n\n" + "\n".join(extras)
     return runtime._call_llm(messages, temperature=0.1, timeout=120, purpose=f"answer:{intent}")
 
 
